@@ -6,7 +6,8 @@ export type MuscleGroup =
   | "biceps"
   | "triceps"
   | "legs"
-  | "core";
+  | "core"
+  | "forearms";
 
 export type Equipment =
   | "barbell"
@@ -15,107 +16,77 @@ export type Equipment =
   | "machine"
   | "bodyweight";
 
-export type MovementPattern = "push" | "pull" | "hinge" | "squat" | "carry";
+export type MovementPattern = "push" | "pull" | "hinge" | "squat" | "carry" | "lunge" | "rotation";
 
+// SQLite row types (snake_case to match database)
 export interface Exercise {
   id: string;
   name: string;
-  primaryMuscle: MuscleGroup;
+  primary_muscle: MuscleGroup;
+  secondary_muscles: string | null;
   equipment: Equipment | null;
-  movementPattern: MovementPattern | null;
-  imageUrl: string | null;
-  isCustom: boolean;
-  userId: string | null;
-  createdAt: Date;
-}
-
-// Workout Types
-export interface WorkoutSet {
-  id: string;
-  setNumber: number;
-  reps: number;
-  weight: number;
-  isWarmup: boolean;
-  createdAt: Date;
-}
-
-export interface WorkoutExercise {
-  id: string;
-  exerciseId: string;
-  exercise: Exercise;
-  sets: WorkoutSet[];
-  notes: string | null;
-  orderIndex: number;
+  movement_pattern: MovementPattern | null;
+  instructions: string | null;
+  is_custom: number; // SQLite boolean
+  created_at: string;
 }
 
 export interface Workout {
   id: string;
-  userId: string | null;
-  routineId: string | null;
   name: string | null;
   notes: string | null;
-  startedAt: Date;
-  completedAt: Date | null;
-  exercises: WorkoutExercise[];
+  started_at: string;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  created_at: string;
 }
 
-// Routine Types
-export interface RoutineExercise {
+export interface WorkoutExercise {
   id: string;
-  exerciseId: string;
-  exercise: Exercise;
-  targetSets: number;
-  targetReps: number;
-  orderIndex: number;
+  workout_id: string;
+  exercise_id: string;
+  order_index: number;
+  notes: string | null;
+  created_at: string;
 }
 
-export interface Routine {
+export interface WorkoutSet {
   id: string;
-  userId: string | null;
-  splitDayId: string | null;
-  name: string;
-  description: string | null;
-  isPreset: boolean;
-  exercises: RoutineExercise[];
-  createdAt: Date;
+  workout_exercise_id: string;
+  set_number: number;
+  reps: number | null;
+  weight: number | null;
+  is_warmup: number; // SQLite boolean
+  is_completed: number; // SQLite boolean
+  created_at: string;
 }
 
-export interface SplitDay {
-  id: string;
-  splitId: string;
-  name: string;
-  dayOrder: number;
-  routines: Routine[];
-}
-
-export interface Split {
-  id: string;
-  userId: string | null;
-  name: string;
-  description: string | null;
-  isPreset: boolean;
-  days: SplitDay[];
-  createdAt: Date;
-}
-
-// Progress Types
 export interface PersonalRecord {
   id: string;
-  userId: string;
-  exerciseId: string;
-  exercise: Exercise;
+  exercise_id: string;
   weight: number;
   reps: number;
-  achievedAt: Date;
+  achieved_at: string;
+  workout_set_id: string | null;
+  created_at: string;
 }
 
 export interface BodyMeasurement {
   id: string;
-  userId: string;
   weight: number | null;
-  photoUrl: string | null;
   notes: string | null;
-  measuredAt: Date;
+  measured_at: string;
+  created_at: string;
+}
+
+// Enriched types for UI (with joined data)
+export interface WorkoutExerciseWithDetails extends WorkoutExercise {
+  exercise: Exercise;
+  sets: WorkoutSet[];
+}
+
+export interface WorkoutWithDetails extends Workout {
+  exercises: WorkoutExerciseWithDetails[];
 }
 
 // Settings Types
@@ -133,4 +104,12 @@ export interface User {
   id: string;
   email: string;
   displayName: string | null;
+}
+
+// Filter types
+export interface ExerciseFilters {
+  muscle?: MuscleGroup;
+  equipment?: Equipment;
+  movement?: MovementPattern;
+  search?: string;
 }

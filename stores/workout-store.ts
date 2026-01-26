@@ -1,225 +1,243 @@
 import { create } from "zustand";
-import type { Workout, WorkoutExercise, WorkoutSet, Exercise } from "@/types";
+import * as db from "@/lib/db";
+import type {
+  Workout,
+  WorkoutExercise,
+  WorkoutSet,
+  Exercise,
+  WorkoutExerciseWithDetails,
+} from "@/types";
+
+interface ActiveWorkoutState {
+  workout: Workout | null;
+  exercises: WorkoutExerciseWithDetails[];
+}
 
 interface WorkoutState {
-  activeWorkout: Workout | null;
-  isWorkoutActive: boolean;
+  active: ActiveWorkoutState | null;
+  isLoading: boolean;
   restTimerEndTime: number | null;
+  restTimerDuration: number;
 
-  // Workout actions
-  startWorkout: (routineId?: string | null) => void;
-  endWorkout: () => void;
-  discardWorkout: () => void;
+  // Workout lifecycle
+  startWorkout: (name?: string) => Promise<void>;
+  completeWorkout: (notes?: string) => Promise<void>;
+  discardWorkout: () => Promise<void>;
 
-  // Exercise actions
-  addExercise: (exercise: Exercise) => void;
-  removeExercise: (exerciseId: string) => void;
-  reorderExercises: (fromIndex: number, toIndex: number) => void;
-  updateExerciseNotes: (workoutExerciseId: string, notes: string) => void;
+  // Exercise management
+  addExercise: (exercise: Exercise) => Promise<void>;
+  removeExercise: (workoutExerciseId: string) => Promise<void>;
 
-  // Set actions
-  addSet: (workoutExerciseId: string, set: Omit<WorkoutSet, "id" | "createdAt">) => void;
-  updateSet: (workoutExerciseId: string, setId: string, updates: Partial<WorkoutSet>) => void;
-  removeSet: (workoutExerciseId: string, setId: string) => void;
+  // Set management
+  addSet: (workoutExerciseId: string) => Promise<void>;
+  updateSet: (
+    setId: string,
+    data: { reps?: number; weight?: number; is_warmup?: boolean }
+  ) => Promise<void>;
+  completeSet: (
+    setId: string,
+    reps: number,
+    weight: number,
+    isWarmup?: boolean
+  ) => Promise<void>;
+  deleteSet: (workoutExerciseId: string, setId: string) => Promise<void>;
 
-  // Timer actions
+  // Timer
   startRestTimer: (seconds: number) => void;
   clearRestTimer: () => void;
 
-  // Workout notes
-  updateWorkoutNotes: (notes: string) => void;
+  // Helpers
+  refreshExercises: () => Promise<void>;
 }
 
-const generateId = () => Math.random().toString(36).substring(2, 15);
-
 export const useWorkoutStore = create<WorkoutState>((set, get) => ({
-  activeWorkout: null,
-  isWorkoutActive: false,
+  active: null,
+  isLoading: false,
   restTimerEndTime: null,
+  restTimerDuration: 90,
 
-  startWorkout: (routineId = null) => {
-    const workout: Workout = {
-      id: generateId(),
-      userId: null,
-      routineId,
-      name: null,
-      notes: null,
-      startedAt: new Date(),
-      completedAt: null,
-      exercises: [],
-    };
-    set({ activeWorkout: workout, isWorkoutActive: true });
-  },
-
-  endWorkout: () => {
-    const { activeWorkout } = get();
-    if (activeWorkout) {
+  startWorkout: async (name?: string) => {
+    set({ isLoading: true });
+    try {
+      const workout = await db.createWorkout(name);
       set({
-        activeWorkout: {
-          ...activeWorkout,
-          completedAt: new Date(),
+        active: {
+          workout,
+          exercises: [],
         },
-        isWorkoutActive: false,
-        restTimerEndTime: null,
+        isLoading: false,
       });
-      // TODO: Save to database
+    } catch (error) {
+      console.error("Failed to start workout:", error);
+      set({ isLoading: false });
     }
   },
 
-  discardWorkout: () => {
-    set({
-      activeWorkout: null,
-      isWorkoutActive: false,
-      restTimerEndTime: null,
-    });
+  completeWorkout: async (notes?: string) => {
+    const { active } = get();
+    if (!active?.workout) return;
+
+    set({ isLoading: true });
+    try {
+      await db.completeWorkout(active.workout.id, notes);
+      set({ active: null, isLoading: false, restTimerEndTime: null });
+    } catch (error) {
+      console.error("Failed to complete workout:", error);
+      set({ isLoading: false });
+    }
   },
 
-  addExercise: (exercise) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
+  discardWorkout: async () => {
+    const { active } = get();
+    if (!active?.workout) return;
 
-    const workoutExercise: WorkoutExercise = {
-      id: generateId(),
-      exerciseId: exercise.id,
-      exercise,
-      sets: [],
-      notes: null,
-      orderIndex: activeWorkout.exercises.length,
-    };
-
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: [...activeWorkout.exercises, workoutExercise],
-      },
-    });
+    set({ isLoading: true });
+    try {
+      await db.deleteWorkout(active.workout.id);
+      set({ active: null, isLoading: false, restTimerEndTime: null });
+    } catch (error) {
+      console.error("Failed to discard workout:", error);
+      set({ isLoading: false });
+    }
   },
 
-  removeExercise: (workoutExerciseId) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
+  addExercise: async (exercise: Exercise) => {
+    const { active, refreshExercises } = get();
+    if (!active?.workout) return;
 
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: activeWorkout.exercises
-          .filter((e) => e.id !== workoutExerciseId)
-          .map((e, index) => ({ ...e, orderIndex: index })),
-      },
-    });
+    try {
+      const workoutExercise = await db.addExerciseToWorkout(
+        active.workout.id,
+        exercise.id
+      );
+
+      // Add first set automatically
+      await db.addSet(workoutExercise.id, 1);
+
+      await refreshExercises();
+    } catch (error) {
+      console.error("Failed to add exercise:", error);
+    }
   },
 
-  reorderExercises: (fromIndex, toIndex) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
-
-    const exercises = [...activeWorkout.exercises];
-    const [removed] = exercises.splice(fromIndex, 1);
-    exercises.splice(toIndex, 0, removed);
-
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: exercises.map((e, index) => ({ ...e, orderIndex: index })),
-      },
-    });
+  removeExercise: async (workoutExerciseId: string) => {
+    const { refreshExercises } = get();
+    try {
+      await db.removeExerciseFromWorkout(workoutExerciseId);
+      await refreshExercises();
+    } catch (error) {
+      console.error("Failed to remove exercise:", error);
+    }
   },
 
-  updateExerciseNotes: (workoutExerciseId, notes) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
+  addSet: async (workoutExerciseId: string) => {
+    const { active, refreshExercises } = get();
+    if (!active) return;
 
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: activeWorkout.exercises.map((e) =>
-          e.id === workoutExerciseId ? { ...e, notes } : e
-        ),
-      },
-    });
+    try {
+      const exercise = active.exercises.find((e) => e.id === workoutExerciseId);
+      const nextSetNumber = (exercise?.sets.length || 0) + 1;
+      await db.addSet(workoutExerciseId, nextSetNumber);
+      await refreshExercises();
+    } catch (error) {
+      console.error("Failed to add set:", error);
+    }
   },
 
-  addSet: (workoutExerciseId, setData) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
-
-    const newSet: WorkoutSet = {
-      id: generateId(),
-      ...setData,
-      createdAt: new Date(),
-    };
-
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: activeWorkout.exercises.map((e) =>
-          e.id === workoutExerciseId
-            ? { ...e, sets: [...e.sets, newSet] }
-            : e
-        ),
-      },
-    });
+  updateSet: async (setId, data) => {
+    const { refreshExercises } = get();
+    try {
+      await db.updateSet(setId, data);
+      await refreshExercises();
+    } catch (error) {
+      console.error("Failed to update set:", error);
+    }
   },
 
-  updateSet: (workoutExerciseId, setId, updates) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
+  completeSet: async (setId, reps, weight, isWarmup = false) => {
+    const { active, refreshExercises, startRestTimer, restTimerDuration } = get();
+    try {
+      await db.completeSet(setId, reps, weight, isWarmup);
 
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: activeWorkout.exercises.map((e) =>
-          e.id === workoutExerciseId
-            ? {
-                ...e,
-                sets: e.sets.map((s) =>
-                  s.id === setId ? { ...s, ...updates } : s
-                ),
-              }
-            : e
-        ),
-      },
-    });
+      // Check for new PR (only for non-warmup sets)
+      if (!isWarmup && active) {
+        // Find the exercise this set belongs to
+        for (const exercise of active.exercises) {
+          const set = exercise.sets.find((s) => s.id === setId);
+          if (set) {
+            await db.checkAndSavePersonalRecord(
+              exercise.exercise_id,
+              weight,
+              reps,
+              setId
+            );
+            break;
+          }
+        }
+      }
+
+      await refreshExercises();
+
+      // Auto-start rest timer
+      if (!isWarmup) {
+        startRestTimer(restTimerDuration);
+      }
+    } catch (error) {
+      console.error("Failed to complete set:", error);
+    }
   },
 
-  removeSet: (workoutExerciseId, setId) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
-
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        exercises: activeWorkout.exercises.map((e) =>
-          e.id === workoutExerciseId
-            ? {
-                ...e,
-                sets: e.sets
-                  .filter((s) => s.id !== setId)
-                  .map((s, index) => ({ ...s, setNumber: index + 1 })),
-              }
-            : e
-        ),
-      },
-    });
+  deleteSet: async (workoutExerciseId, setId) => {
+    const { refreshExercises } = get();
+    try {
+      await db.deleteSet(setId);
+      await refreshExercises();
+    } catch (error) {
+      console.error("Failed to delete set:", error);
+    }
   },
 
-  startRestTimer: (seconds) => {
-    set({ restTimerEndTime: Date.now() + seconds * 1000 });
+  startRestTimer: (seconds: number) => {
+    set({
+      restTimerEndTime: Date.now() + seconds * 1000,
+      restTimerDuration: seconds,
+    });
   },
 
   clearRestTimer: () => {
     set({ restTimerEndTime: null });
   },
 
-  updateWorkoutNotes: (notes) => {
-    const { activeWorkout } = get();
-    if (!activeWorkout) return;
+  refreshExercises: async () => {
+    const { active } = get();
+    if (!active?.workout) return;
 
-    set({
-      activeWorkout: {
-        ...activeWorkout,
-        notes,
-      },
-    });
+    try {
+      const workoutExercises = await db.getWorkoutExercises(active.workout.id);
+
+      const exercisesWithDetails: WorkoutExerciseWithDetails[] = [];
+
+      for (const we of workoutExercises) {
+        const exercise = await db.getExerciseById(we.exercise_id);
+        const sets = await db.getSetsForExercise(we.id);
+
+        if (exercise) {
+          exercisesWithDetails.push({
+            ...we,
+            exercise,
+            sets,
+          });
+        }
+      }
+
+      set({
+        active: {
+          ...active,
+          exercises: exercisesWithDetails,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to refresh exercises:", error);
+    }
   },
 }));
