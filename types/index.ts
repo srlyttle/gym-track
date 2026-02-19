@@ -16,7 +16,14 @@ export type Equipment =
   | "machine"
   | "bodyweight";
 
-export type MovementPattern = "push" | "pull" | "hinge" | "squat" | "carry" | "lunge" | "rotation";
+export type MovementPattern =
+  | "push"
+  | "pull"
+  | "hinge"
+  | "squat"
+  | "carry"
+  | "lunge"
+  | "rotation";
 
 // SQLite row types (snake_case to match database)
 export interface Exercise {

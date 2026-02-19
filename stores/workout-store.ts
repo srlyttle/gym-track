@@ -21,6 +21,13 @@ interface WorkoutState {
 
   // Workout lifecycle
   startWorkout: (name?: string) => Promise<void>;
+  startWorkoutWithExercises: (
+    name: string,
+    exercises: {
+      exerciseId: string;
+      sets: { reps: number; weight: number; isWarmup: boolean }[];
+    }[]
+  ) => Promise<void>;
   completeWorkout: (notes?: string) => Promise<void>;
   discardWorkout: () => Promise<void>;
 
@@ -69,6 +76,44 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
       });
     } catch (error) {
       console.error("Failed to start workout:", error);
+      set({ isLoading: false });
+    }
+  },
+
+  startWorkoutWithExercises: async (name, exercises) => {
+    set({ isLoading: true });
+    try {
+      const workout = await db.createWorkout(name);
+
+      for (const ex of exercises) {
+        const workoutExercise = await db.addExerciseToWorkout(
+          workout.id,
+          ex.exerciseId
+        );
+
+        for (let i = 0; i < ex.sets.length; i++) {
+          const s = ex.sets[i];
+          const workoutSet = await db.addSet(workoutExercise.id, i + 1);
+          await db.updateSet(workoutSet.id, {
+            reps: s.reps,
+            weight: s.weight,
+            is_warmup: s.isWarmup,
+          });
+        }
+      }
+
+      set({
+        active: {
+          workout,
+          exercises: [],
+        },
+        isLoading: false,
+      });
+
+      // Refresh to load all exercises with details
+      await get().refreshExercises();
+    } catch (error) {
+      console.error("Failed to start workout with exercises:", error);
       set({ isLoading: false });
     }
   },

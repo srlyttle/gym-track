@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { format, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 import {
@@ -17,6 +18,7 @@ interface WorkoutWithStats extends Workout {
 }
 
 export default function HistoryScreen() {
+  const router = useRouter();
   const [workouts, setWorkouts] = useState<WorkoutWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -152,6 +154,7 @@ export default function HistoryScreen() {
                 {groupWorkouts.map((workout) => (
                   <Pressable
                     key={workout.id}
+                    onPress={() => router.push(`/workout/${workout.id}`)}
                     className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 active:bg-slate-200 dark:active:bg-slate-700"
                   >
                     <View className="flex-row items-start justify-between">

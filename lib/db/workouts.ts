@@ -451,6 +451,34 @@ export async function getWorkoutVolume(workoutId: string): Promise<number> {
   return result?.total || 0;
 }
 
+// Get completed workouts within a date range with full details
+export async function getWorkoutsInDateRange(
+  startDate: string,
+  endDate: string
+): Promise<WorkoutWithDetails[]> {
+  const db = await getDatabase();
+
+  const workouts = await db.getAllAsync<Workout>(
+    `SELECT * FROM workouts
+     WHERE completed_at IS NOT NULL
+       AND started_at >= ?
+       AND started_at <= ?
+     ORDER BY started_at DESC`,
+    [startDate, endDate]
+  );
+
+  const results: WorkoutWithDetails[] = [];
+
+  for (const workout of workouts) {
+    const detailed = await getWorkoutWithDetails(workout.id);
+    if (detailed) {
+      results.push(detailed);
+    }
+  }
+
+  return results;
+}
+
 // Helper functions
 function getStartOfWeek(): Date {
   const now = new Date();
