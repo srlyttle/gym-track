@@ -163,19 +163,32 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* Start Workout Button */}
+        {/* Start Workout Buttons */}
         {!active && (
-          <Pressable
-            onPress={handleStartWorkout}
-            className="bg-primary-500 rounded-xl p-4 mb-6 active:bg-primary-600"
-          >
-            <View className="flex-row items-center justify-center gap-2">
-              <Ionicons name="play-circle" size={24} color="white" />
-              <Text className="text-white font-semibold text-lg">
-                Start Workout
-              </Text>
-            </View>
-          </Pressable>
+          <View className="gap-3 mb-6">
+            <Pressable
+              onPress={handleStartWorkout}
+              className="bg-primary-500 rounded-xl p-4 active:bg-primary-600"
+            >
+              <View className="flex-row items-center justify-center gap-2">
+                <Ionicons name="play-circle" size={24} color="white" />
+                <Text className="text-white font-semibold text-lg">
+                  Start Workout
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push("/suggest-workout")}
+              className="border-2 border-primary-500 rounded-xl p-4 active:bg-primary-500/10"
+            >
+              <View className="flex-row items-center justify-center gap-2">
+                <Ionicons name="sparkles" size={24} color="#10b981" />
+                <Text className="text-primary-500 font-semibold text-lg">
+                  Suggest Workout
+                </Text>
+              </View>
+            </Pressable>
+          </View>
         )}
 
         {/* Recent Workouts */}
