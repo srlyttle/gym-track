@@ -133,3 +133,31 @@ Required for Supabase integration (optional for local-only mode):
 - Android package: `com.ggs.gymtrack`
 - New Architecture enabled
 - Typed routes enabled via Expo Router experiments
+
+## Git & Branches
+
+- When creating branches, prefix with cc/ to indicate Claude Code created them
+- When working on a GitHub issue, use cc/issue-{number}-short-description
+- Use the gh CLI to interact with GitHub
+
+## Pull Requests
+
+- Always use the gh CLI to create PRs after pushing a branch
+- PR titles should be concise
+- PR descriptions should list what changed and reference the issue number if applicable
+- Before creating a PR, always bump the app version in app.json:
+  - Increment the patch version (e.g. 2.0.0 → 2.0.1)
+  - Increment the ios.buildNumber by 1
+  - Commit the version bump as part of the PR with message: "bump version to x.x.x"
+
+## Versioning
+
+- Version lives in app.json under expo.version
+- iOS build number lives in app.json under expo.ios.buildNumber
+- Always bump both when creating a PR that will be deployed to TestFlight
+- Format: semantic versioning, patch bumps for fixes/features, minor for significant releases
+
+## Testing
+
+- Run npm run lint before creating a PR if a lint script exists
+- Flag any missing tests for new functionality in the PR description
