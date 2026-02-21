@@ -15,11 +15,23 @@ import {
   getWorkoutsThisWeek,
   getRecentWorkouts,
   getTotalVolumeThisWeek,
+  getMuscleGroupsThisWeek,
 } from "@/lib/db";
 import { useWorkoutStore } from "@/stores/workout-store";
 import { useSplitStore } from "@/stores/split-store";
 import type { Workout } from "@/types";
 import { formatDistanceToNow } from "date-fns";
+
+const MUSCLE_LABELS: Record<string, string> = {
+  chest: "Chest",
+  back: "Back",
+  shoulders: "Shoulders",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  legs: "Legs",
+  core: "Core",
+  forearms: "Forearms",
+};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -28,6 +40,7 @@ export default function HomeScreen() {
   const [workoutsThisWeek, setWorkoutsThisWeek] = useState(0);
   const [totalVolume, setTotalVolume] = useState(0);
   const [recentWorkouts, setRecentWorkouts] = useState<Workout[]>([]);
+  const [muscleGroups, setMuscleGroups] = useState<{ muscle: string; count: number }[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -35,15 +48,17 @@ export default function HomeScreen() {
     try {
       await seedExercisesIfNeeded();
 
-      const [weekWorkouts, volume, recent] = await Promise.all([
+      const [weekWorkouts, volume, recent, muscles] = await Promise.all([
         getWorkoutsThisWeek(),
         getTotalVolumeThisWeek(),
         getRecentWorkouts(5),
+        getMuscleGroupsThisWeek(),
       ]);
 
       setWorkoutsThisWeek(weekWorkouts.length);
       setTotalVolume(Math.round(volume));
       setRecentWorkouts(recent);
+      setMuscleGroups(muscles);
       setInitialized(true);
     } catch (error) {
       console.error("Failed to load data:", error);
@@ -55,7 +70,6 @@ export default function HomeScreen() {
     loadData();
   }, [loadData]);
 
-  // Refresh when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       if (initialized) {
@@ -109,12 +123,9 @@ export default function HomeScreen() {
         }
       >
         {/* Header */}
-        <View className="py-6">
-          <Text className="text-3xl font-bold text-slate-900 dark:text-white">
-            Welcome back! 
-          </Text>
-          <Text className="text-slate-500 dark:text-slate-400 mt-1">
-            Ready to crush your workout?
+        <View className="pt-4 pb-3">
+          <Text className="text-2xl font-bold text-slate-900 dark:text-white">
+            GymTrack
           </Text>
         </View>
 
@@ -122,96 +133,107 @@ export default function HomeScreen() {
         {active && (
           <Pressable
             onPress={() => router.push("/(tabs)/workout")}
-            className="bg-primary-500 rounded-xl p-4 mb-4"
+            className="bg-primary-500 rounded-xl px-4 py-3 mb-3"
           >
             <View className="flex-row items-center justify-between">
               <View>
-                <Text className="text-white/80 text-sm">Active Workout</Text>
-                <Text className="text-white font-semibold text-lg">
+                <Text className="text-white/80 text-xs">Active Workout</Text>
+                <Text className="text-white font-semibold">
                   {active.exercises.length} exercises
                 </Text>
               </View>
-              <View className="flex-row items-center">
-                <Text className="text-white mr-2">Continue</Text>
-                <Ionicons name="arrow-forward" size={20} color="white" />
+              <View className="flex-row items-center gap-1">
+                <Text className="text-white text-sm">Continue</Text>
+                <Ionicons name="arrow-forward" size={16} color="white" />
               </View>
             </View>
           </Pressable>
         )}
 
-        {/* Active Split Card */}
+        {/* Active Split */}
         {activeSplit && !active && (
-          <View className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 mb-4 flex-row items-center justify-between">
+          <View className="bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2 mb-3 flex-row items-center justify-between">
             <View className="flex-row items-center gap-2 flex-1">
-              <Ionicons name="layers-outline" size={18} color="#10b981" />
-              <View>
-                <Text className="text-xs text-slate-500 dark:text-slate-400">
-                  Active Split
+              <Ionicons name="layers-outline" size={16} color="#10b981" />
+              <Text className="font-medium text-slate-900 dark:text-white text-sm">
+                {activeSplit.name}
+                <Text className="text-slate-500 dark:text-slate-400 font-normal">
+                  {" "}· Day {activeSplit.currentDayIndex + 1}/{activeSplit.days.length}
                 </Text>
-                <Text className="font-semibold text-slate-900 dark:text-white text-sm">
-                  {activeSplit.name} · Day {activeSplit.currentDayIndex + 1}/
-                  {activeSplit.days.length}
-                </Text>
-              </View>
+              </Text>
             </View>
             <Pressable
               onPress={() => router.push("/suggest-workout")}
               className="active:opacity-70 ml-2"
             >
-              <Text className="text-primary-500 text-xs font-medium">
-                View
-              </Text>
+              <Text className="text-primary-500 text-xs font-medium">View</Text>
             </Pressable>
           </View>
         )}
 
-        {/* Quick Stats */}
-        <View className="flex-row gap-3 mb-6">
-          <View className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-4">
-            <Text className="text-slate-500 dark:text-slate-400 text-sm">
-              This Week
-            </Text>
-            <Text className="text-2xl font-bold text-slate-900 dark:text-white">
+        {/* Stats row */}
+        <View className="flex-row gap-2 mb-3">
+          <View className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2.5">
+            <Text className="text-slate-500 dark:text-slate-400 text-xs">This Week</Text>
+            <Text className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
               {workoutsThisWeek}
-            </Text>
-            <Text className="text-slate-500 dark:text-slate-400 text-sm">
-              workouts
+              <Text className="text-sm font-normal text-slate-500 dark:text-slate-400"> workouts</Text>
             </Text>
           </View>
-          <View className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-4">
-            <Text className="text-slate-500 dark:text-slate-400 text-sm">
-              Volume
-            </Text>
-            <Text className="text-2xl font-bold text-slate-900 dark:text-white">
-              {formatVolume(totalVolume)} kg
-            </Text>
-            <Text className="text-slate-500 dark:text-slate-400 text-sm">
-              this week
+          <View className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2.5">
+            <Text className="text-slate-500 dark:text-slate-400 text-xs">Volume</Text>
+            <Text className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
+              {formatVolume(totalVolume)}
+              <Text className="text-sm font-normal text-slate-500 dark:text-slate-400"> kg</Text>
             </Text>
           </View>
         </View>
 
+        {/* Muscle groups hit this week */}
+        {muscleGroups.length > 0 && (
+          <View className="mb-3">
+            <Text className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 uppercase tracking-wide font-medium">
+              Muscles this week
+            </Text>
+            <View className="flex-row flex-wrap gap-1.5">
+              {muscleGroups.map(({ muscle, count }) => (
+                <View
+                  key={muscle}
+                  className="bg-primary-500/10 rounded-full px-2.5 py-1 flex-row items-center gap-1"
+                >
+                  <Text className="text-primary-600 dark:text-primary-400 text-xs font-medium">
+                    {MUSCLE_LABELS[muscle] ?? muscle}
+                  </Text>
+                  {count > 1 && (
+                    <Text className="text-primary-500/70 text-xs">×{count}</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Start Workout Buttons */}
         {!active && (
-          <View className="gap-3 mb-6">
+          <View className="gap-2 mb-4">
             <Pressable
               onPress={handleStartWorkout}
-              className="bg-primary-500 rounded-xl p-4 active:bg-primary-600"
+              className="bg-primary-500 rounded-xl py-3.5 active:bg-primary-600"
             >
               <View className="flex-row items-center justify-center gap-2">
-                <Ionicons name="play-circle" size={24} color="white" />
-                <Text className="text-white font-semibold text-lg">
+                <Ionicons name="play-circle" size={22} color="white" />
+                <Text className="text-white font-semibold text-base">
                   Start Workout
                 </Text>
               </View>
             </Pressable>
             <Pressable
               onPress={() => router.push("/suggest-workout")}
-              className="border-2 border-primary-500 rounded-xl p-4 active:bg-primary-500/10"
+              className="border border-primary-500 rounded-xl py-3 active:bg-primary-500/10"
             >
               <View className="flex-row items-center justify-center gap-2">
-                <Ionicons name="sparkles" size={24} color="#10b981" />
-                <Text className="text-primary-500 font-semibold text-lg">
+                <Ionicons name="sparkles" size={20} color="#10b981" />
+                <Text className="text-primary-500 font-semibold text-base">
                   Suggest Workout
                 </Text>
               </View>
@@ -220,39 +242,40 @@ export default function HomeScreen() {
         )}
 
         {/* Recent Workouts */}
-        <View className="mb-6">
-          <Text className="text-xl font-semibold text-slate-900 dark:text-white mb-3">
-            Recent Workouts
-          </Text>
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mb-2">
+            <Text className="text-base font-semibold text-slate-900 dark:text-white">
+              Recent Workouts
+            </Text>
+            <Pressable onPress={() => router.push("/(tabs)/history")} className="active:opacity-70">
+              <Text className="text-primary-500 text-xs font-medium">See all</Text>
+            </Pressable>
+          </View>
           {recentWorkouts.length === 0 ? (
-            <View className="bg-slate-100 dark:bg-slate-800 rounded-xl p-6 items-center">
-              <Ionicons name="barbell-outline" size={48} color="#9ca3af" />
-              <Text className="text-slate-500 dark:text-slate-400 mt-2 text-center">
+            <View className="bg-slate-100 dark:bg-slate-800 rounded-xl p-5 items-center">
+              <Ionicons name="barbell-outline" size={36} color="#9ca3af" />
+              <Text className="text-slate-500 dark:text-slate-400 mt-2 text-sm text-center">
                 No workouts yet.{"\n"}Start your first workout!
               </Text>
             </View>
           ) : (
-            <View className="gap-2">
+            <View className="gap-1.5">
               {recentWorkouts.map((workout) => (
                 <Pressable
                   key={workout.id}
-                  className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 active:bg-slate-200 dark:active:bg-slate-700"
+                  className="bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2.5 active:bg-slate-200 dark:active:bg-slate-700 flex-row items-center justify-between"
                 >
-                  <View className="flex-row items-center justify-between">
-                    <View>
-                      <Text className="font-medium text-slate-900 dark:text-white">
-                        {workout.name || "Workout"}
-                      </Text>
-                      <Text className="text-sm text-slate-500 dark:text-slate-400">
-                        {formatWorkoutDate(workout.started_at)}
-                      </Text>
-                    </View>
-                    <View className="items-end">
-                      <Text className="text-sm text-slate-600 dark:text-slate-400">
-                        {formatDuration(workout.duration_seconds)}
-                      </Text>
-                    </View>
+                  <View className="flex-1 mr-2">
+                    <Text className="font-medium text-slate-900 dark:text-white text-sm" numberOfLines={1}>
+                      {workout.name || "Workout"}
+                    </Text>
+                    <Text className="text-xs text-slate-500 dark:text-slate-400">
+                      {formatWorkoutDate(workout.started_at)}
+                    </Text>
                   </View>
+                  <Text className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+                    {formatDuration(workout.duration_seconds)}
+                  </Text>
                 </Pressable>
               ))}
             </View>
@@ -261,31 +284,31 @@ export default function HomeScreen() {
 
         {/* Quick Actions */}
         <View className="mb-6">
-          <Text className="text-xl font-semibold text-slate-900 dark:text-white mb-3">
+          <Text className="text-base font-semibold text-slate-900 dark:text-white mb-2">
             Quick Actions
           </Text>
-          <View className="flex-row gap-3">
+          <View className="flex-row gap-2">
             <Pressable
               onPress={() => router.push("/exercises")}
-              className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-4 items-center active:bg-slate-200 dark:active:bg-slate-700"
+              className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl py-3 items-center active:bg-slate-200 dark:active:bg-slate-700"
             >
-              <Ionicons name="fitness" size={24} color="#10b981" />
-              <Text className="text-slate-700 dark:text-slate-300 mt-2 text-sm">
-                Exercises 1
+              <Ionicons name="fitness" size={20} color="#10b981" />
+              <Text className="text-slate-700 dark:text-slate-300 mt-1 text-xs">
+                Exercises
               </Text>
             </Pressable>
-            <Pressable className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-4 items-center active:bg-slate-200 dark:active:bg-slate-700">
-              <Ionicons name="list" size={24} color="#10b981" />
-              <Text className="text-slate-700 dark:text-slate-300 mt-2 text-sm">
+            <Pressable className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl py-3 items-center active:bg-slate-200 dark:active:bg-slate-700">
+              <Ionicons name="list" size={20} color="#10b981" />
+              <Text className="text-slate-700 dark:text-slate-300 mt-1 text-xs">
                 Routines
               </Text>
             </Pressable>
             <Pressable
               onPress={() => router.push("/(tabs)/progress")}
-              className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl p-4 items-center active:bg-slate-200 dark:active:bg-slate-700"
+              className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl py-3 items-center active:bg-slate-200 dark:active:bg-slate-700"
             >
-              <Ionicons name="trophy" size={24} color="#10b981" />
-              <Text className="text-slate-700 dark:text-slate-300 mt-2 text-sm">
+              <Ionicons name="trophy" size={20} color="#10b981" />
+              <Text className="text-slate-700 dark:text-slate-300 mt-1 text-xs">
                 PRs
               </Text>
             </Pressable>

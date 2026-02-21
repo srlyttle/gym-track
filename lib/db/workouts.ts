@@ -292,6 +292,26 @@ export async function getTotalVolumeThisWeek(): Promise<number> {
   return result?.total || 0;
 }
 
+// Get muscle group hit counts for the current week (by number of workouts they appeared in)
+export async function getMuscleGroupsThisWeek(): Promise<{ muscle: string; count: number }[]> {
+  const db = await getDatabase();
+  const startOfWeek = getStartOfWeek();
+
+  const results = await db.getAllAsync<{ muscle: string; count: number }>(
+    `SELECT e.primary_muscle as muscle, COUNT(DISTINCT we.workout_id) as count
+     FROM workout_exercises we
+     JOIN exercises e ON we.exercise_id = e.id
+     JOIN workouts w ON we.workout_id = w.id
+     WHERE w.completed_at IS NOT NULL
+       AND w.started_at >= ?
+     GROUP BY e.primary_muscle
+     ORDER BY count DESC`,
+    [startOfWeek.toISOString()]
+  );
+
+  return results;
+}
+
 // Get workout with full details (exercises and sets)
 export async function getWorkoutWithDetails(workoutId: string): Promise<WorkoutWithDetails | null> {
   const db = await getDatabase();
