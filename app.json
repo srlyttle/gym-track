@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "GymTrack",
+    "name": "Muscleminded",
     "slug": "gym-track",
     "version": "3.0.0",
     "orientation": "portrait",
@@ -32,10 +32,7 @@
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
     },
-    "plugins": [
-      "expo-router",
-      "expo-secure-store"
-    ],
+    "plugins": ["expo-router", "expo-secure-store"],
     "experiments": {
       "typedRoutes": true
     },

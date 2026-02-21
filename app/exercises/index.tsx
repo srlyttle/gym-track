@@ -203,7 +203,7 @@ export default function ExerciseListScreen({ onSelect, selectionMode }: Props) {
               </Pressable>
             )}
             <Text className="text-2xl font-bold text-slate-900 dark:text-white">
-              {selectionMode ? "Select Exercise" : "Exercises 11"}
+              {selectionMode ? "Select Exercise" : "Exercises"}
             </Text>
           </View>
           <View className="flex-row gap-2">

@@ -120,3 +120,53 @@ export interface ExerciseFilters {
   movement?: MovementPattern;
   search?: string;
 }
+
+// Split / PT Program Types
+export interface ActiveSplit {
+  id: string;
+  name: string;
+  source: "ai" | "pt";
+  ptTrainerId?: string;
+  ptProgramId?: string;
+  currentDayIndex: number;
+  days: ActiveSplitDay[];
+  activatedAt: string;
+}
+
+export interface ActiveSplitDay {
+  dayName: string;
+  splitType: string;
+  exercises: {
+    exerciseId: string;
+    exerciseName: string;
+    sets: import("@/lib/ai/claude").SuggestedSet[];
+  }[];
+}
+
+export interface PTTrainer {
+  id: string;
+  name: string;
+  specialty: string;
+  bio: string;
+  programs: PTProgram[];
+}
+
+export interface PTProgram {
+  id: string;
+  trainerId: string;
+  name: string;
+  description: string;
+  daysPerWeek: number;
+  days: PTDay[];
+}
+
+export interface PTDay {
+  dayName: string;
+  splitType: string;
+  exercises: PTExercise[];
+}
+
+export interface PTExercise {
+  exerciseName: string;
+  sets: import("@/lib/ai/claude").SuggestedSet[];
+}
