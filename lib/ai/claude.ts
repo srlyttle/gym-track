@@ -51,6 +51,28 @@ export interface SuggestWorkoutParams {
   split: string;
   duration: number;
   availableExercises: Exercise[];
+  energyLevel?: "energized" | "normal" | "tired";
+  equipment?: "full_gym" | "home_gym" | "no_equipment";
+}
+
+export interface SuggestSplitParams {
+  daysPerWeek: number;
+  recentWorkouts: WorkoutSummary[];
+  availableExercises: Exercise[];
+  energyLevel?: "energized" | "normal" | "tired";
+  equipment?: "full_gym" | "home_gym" | "no_equipment";
+}
+
+export interface SuggestedSplitDay {
+  dayName: string;
+  splitType: string;
+  exercises: SuggestedExercise[];
+}
+
+export interface SuggestedSplitPlan {
+  name: string;
+  reasoning: string;
+  days: SuggestedSplitDay[];
 }
 
 function groupExercisesByMuscle(
@@ -93,7 +115,7 @@ function findRecentlyTrainedMuscles(workouts: WorkoutSummary[]): string[] {
 }
 
 function buildPrompt(params: SuggestWorkoutParams): string {
-  const { recentWorkouts, split, duration, availableExercises } = params;
+  const { recentWorkouts, split, duration, availableExercises, energyLevel, equipment } = params;
 
   const grouped = groupExercisesByMuscle(availableExercises);
   const recentSummary = buildRecentWorkoutsSummary(recentWorkouts);
@@ -107,7 +129,17 @@ function buildPrompt(params: SuggestWorkoutParams): string {
     .map(([muscle, names]) => `## ${muscle}\n${names.join(", ")}`)
     .join("\n\n");
 
-  return `Generate a ${split} workout for approximately ${duration} minutes.
+  const contextLines: string[] = [];
+  if (energyLevel) {
+    const energyDesc = energyLevel === "energized" ? "high energy — push harder" : energyLevel === "tired" ? "low energy — keep it moderate/lighter" : "normal energy";
+    contextLines.push(`User energy level: ${energyDesc}`);
+  }
+  if (equipment) {
+    const equipDesc = equipment === "full_gym" ? "full gym with all equipment available" : equipment === "home_gym" ? "home gym (dumbbells, bodyweight)" : "no equipment (bodyweight only)";
+    contextLines.push(`Available equipment: ${equipDesc}`);
+  }
+
+  return `Generate a ${split} workout for approximately ${duration} minutes.${contextLines.length > 0 ? `\n\n## Session Context\n${contextLines.join("\n")}` : ""}
 
 ## Recent Workout History (last ${recentWorkouts.length} workouts)
 ${recentSummary}
@@ -220,6 +252,145 @@ export async function suggestWorkout(
   for (const ex of parsed.exercises) {
     if (!ex.exerciseName || !Array.isArray(ex.sets) || ex.sets.length === 0) {
       throw new Error("Invalid exercise format received. Please try again.");
+    }
+  }
+
+  return parsed;
+}
+
+function buildSplitPrompt(params: SuggestSplitParams): string {
+  const { daysPerWeek, recentWorkouts, availableExercises, energyLevel, equipment } = params;
+
+  const grouped = groupExercisesByMuscle(availableExercises);
+  const recentSummary = buildRecentWorkoutsSummary(recentWorkouts);
+
+  const exerciseListStr = Object.entries(grouped)
+    .map(([muscle, names]) => `## ${muscle}\n${names.join(", ")}`)
+    .join("\n\n");
+
+  const contextLines: string[] = [];
+  if (energyLevel) {
+    const energyDesc = energyLevel === "energized" ? "high energy" : energyLevel === "tired" ? "low energy — keep volume moderate" : "normal energy";
+    contextLines.push(`User energy: ${energyDesc}`);
+  }
+  if (equipment) {
+    const equipDesc = equipment === "full_gym" ? "full gym" : equipment === "home_gym" ? "home gym (dumbbells, bodyweight)" : "no equipment (bodyweight only)";
+    contextLines.push(`Equipment: ${equipDesc}`);
+  }
+
+  return `Design a ${daysPerWeek}-day workout split program.${contextLines.length > 0 ? `\n\n## Context\n${contextLines.join("\n")}` : ""}
+
+## Recent Workout History (last ${recentWorkouts.length} workouts)
+${recentSummary}
+
+## Available Exercises (you MUST pick from this list exactly)
+${exerciseListStr}
+
+## Guidelines
+- Create exactly ${daysPerWeek} training days with appropriate muscle group distribution
+- Each day: 5-7 exercises, 3-4 working sets each (include 1 warmup per compound)
+- Use realistic weights for an intermediate lifter (in kg)
+- Ensure balanced muscle group coverage across the week
+- Exercise names must match EXACTLY from the available list above
+
+Respond with ONLY valid JSON matching this schema:
+{
+  "name": "string - short split name like 'PPL Split' or '4-Day Upper Lower'",
+  "reasoning": "string - 2-3 sentences explaining the split structure and why it suits this user",
+  "days": [
+    {
+      "dayName": "string - e.g. 'Push Day', 'Upper A', 'Legs'",
+      "splitType": "string - e.g. 'Push', 'Upper Body', 'Legs'",
+      "exercises": [
+        {
+          "exerciseName": "string - exact name from available exercises list",
+          "reason": "string - brief reason",
+          "sets": [
+            { "reps": number, "weight": number, "isWarmup": boolean }
+          ]
+        }
+      ]
+    }
+  ]
+}`;
+}
+
+export async function suggestSplit(
+  params: SuggestSplitParams
+): Promise<SuggestedSplitPlan> {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    throw new Error(
+      "Claude API key not configured. Go to Profile > Settings to add your API key."
+    );
+  }
+
+  const userPrompt = buildSplitPrompt(params);
+
+  const response = await fetch(CLAUDE_API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: CLAUDE_MODEL,
+      max_tokens: 6000,
+      system:
+        "You are an expert fitness coach and personal trainer. Return ONLY valid JSON with no additional text, markdown, or explanation.",
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    if (response.status === 401) {
+      throw new Error(
+        "Invalid API key. Check your Claude API key in Profile > Settings."
+      );
+    }
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded. Please try again in a moment.");
+    }
+    throw new Error(`API request failed (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+
+  const content = data.content?.[0]?.text;
+  if (!content) {
+    throw new Error("Empty response from Claude API.");
+  }
+
+  let jsonStr = content.trim();
+  if (jsonStr.startsWith("```")) {
+    jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  let parsed: SuggestedSplitPlan;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    throw new Error("Failed to parse split suggestion. Please try again.");
+  }
+
+  if (
+    !parsed.name ||
+    !Array.isArray(parsed.days) ||
+    parsed.days.length === 0
+  ) {
+    throw new Error("Invalid split format received. Please try again.");
+  }
+
+  for (const day of parsed.days) {
+    if (
+      !day.dayName ||
+      !day.splitType ||
+      !Array.isArray(day.exercises) ||
+      day.exercises.length === 0
+    ) {
+      throw new Error("Invalid split day format received. Please try again.");
     }
   }
 

@@ -17,12 +17,14 @@ import {
   getTotalVolumeThisWeek,
 } from "@/lib/db";
 import { useWorkoutStore } from "@/stores/workout-store";
+import { useSplitStore } from "@/stores/split-store";
 import type { Workout } from "@/types";
 import { formatDistanceToNow } from "date-fns";
 
 export default function HomeScreen() {
   const router = useRouter();
   const { active, startWorkout } = useWorkoutStore();
+  const { activeSplit } = useSplitStore();
   const [workoutsThisWeek, setWorkoutsThisWeek] = useState(0);
   const [totalVolume, setTotalVolume] = useState(0);
   const [recentWorkouts, setRecentWorkouts] = useState<Workout[]>([]);
@@ -135,6 +137,32 @@ export default function HomeScreen() {
               </View>
             </View>
           </Pressable>
+        )}
+
+        {/* Active Split Card */}
+        {activeSplit && !active && (
+          <View className="bg-slate-100 dark:bg-slate-800 rounded-xl p-3 mb-4 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2 flex-1">
+              <Ionicons name="layers-outline" size={18} color="#10b981" />
+              <View>
+                <Text className="text-xs text-slate-500 dark:text-slate-400">
+                  Active Split
+                </Text>
+                <Text className="font-semibold text-slate-900 dark:text-white text-sm">
+                  {activeSplit.name} · Day {activeSplit.currentDayIndex + 1}/
+                  {activeSplit.days.length}
+                </Text>
+              </View>
+            </View>
+            <Pressable
+              onPress={() => router.push("/suggest-workout")}
+              className="active:opacity-70 ml-2"
+            >
+              <Text className="text-primary-500 text-xs font-medium">
+                View
+              </Text>
+            </Pressable>
+          </View>
         )}
 
         {/* Quick Stats */}
