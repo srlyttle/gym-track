@@ -51,7 +51,7 @@ export default function HomeScreen() {
       const [weekWorkouts, volume, recent, muscles] = await Promise.all([
         getWorkoutsThisWeek(),
         getTotalVolumeThisWeek(),
-        getRecentWorkouts(5),
+        getRecentWorkouts(2),
         getMuscleGroupsThisWeek(),
       ]);
 
@@ -117,18 +117,11 @@ export default function HomeScreen() {
   return (
     <SafeAreaView className="flex-1 bg-white dark:bg-slate-900">
       <ScrollView
-        className="flex-1 px-4"
+        className="flex-1 px-4 pt-2"
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header */}
-        <View className="pt-4 pb-3">
-          <Text className="text-2xl font-bold text-slate-900 dark:text-white">
-            GymTrack
-          </Text>
-        </View>
-
         {/* Active Workout Banner */}
         {active && (
           <Pressable
