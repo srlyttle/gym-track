@@ -1,5 +1,12 @@
 import { useState, useCallback } from "react";
-import { View, Text, ScrollView, Pressable, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  RefreshControl,
+  Modal,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -11,10 +18,16 @@ import {
   getWorkoutVolume,
 } from "@/lib/db";
 import type { Workout } from "@/types";
+import CopyWorkoutModal from "@/components/CopyWorkoutModal";
 
 interface WorkoutWithStats extends Workout {
   exerciseCount: number;
   totalVolume: number;
+}
+
+interface SelectedWorkout {
+  id: string;
+  name: string | null;
 }
 
 export default function HistoryScreen() {
@@ -22,6 +35,10 @@ export default function HistoryScreen() {
   const [workouts, setWorkouts] = useState<WorkoutWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [actionSheetWorkout, setActionSheetWorkout] =
+    useState<SelectedWorkout | null>(null);
+  const [copyModalWorkout, setCopyModalWorkout] =
+    useState<SelectedWorkout | null>(null);
 
   const loadWorkouts = useCallback(async () => {
     try {
@@ -165,29 +182,63 @@ export default function HistoryScreen() {
                         <Text className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                           {formatWorkoutDate(workout.started_at)}
                           {workout.started_at && (
-                            <Text> at {format(new Date(workout.started_at), "h:mm a")}</Text>
+                            <Text>
+                              {" "}
+                              at{" "}
+                              {format(new Date(workout.started_at), "h:mm a")}
+                            </Text>
                           )}
                         </Text>
                       </View>
+                      {/* Options menu button */}
+                      <Pressable
+                        onPress={() =>
+                          setActionSheetWorkout({
+                            id: workout.id,
+                            name: workout.name,
+                          })
+                        }
+                        hitSlop={8}
+                        className="p-1 ml-2 -mr-1 -mt-1"
+                      >
+                        <Ionicons
+                          name="ellipsis-horizontal"
+                          size={20}
+                          color="#6b7280"
+                        />
+                      </Pressable>
                     </View>
 
                     {/* Stats Row */}
                     <View className="flex-row mt-3 gap-4">
                       <View className="flex-row items-center">
-                        <Ionicons name="fitness-outline" size={16} color="#6b7280" />
+                        <Ionicons
+                          name="fitness-outline"
+                          size={16}
+                          color="#6b7280"
+                        />
                         <Text className="text-sm text-slate-600 dark:text-slate-400 ml-1">
-                          {workout.exerciseCount} exercise{workout.exerciseCount !== 1 ? "s" : ""}
+                          {workout.exerciseCount} exercise
+                          {workout.exerciseCount !== 1 ? "s" : ""}
                         </Text>
                       </View>
                       <View className="flex-row items-center">
-                        <Ionicons name="time-outline" size={16} color="#6b7280" />
+                        <Ionicons
+                          name="time-outline"
+                          size={16}
+                          color="#6b7280"
+                        />
                         <Text className="text-sm text-slate-600 dark:text-slate-400 ml-1">
                           {formatDuration(workout.duration_seconds)}
                         </Text>
                       </View>
                       {workout.totalVolume > 0 && (
                         <View className="flex-row items-center">
-                          <Ionicons name="barbell-outline" size={16} color="#6b7280" />
+                          <Ionicons
+                            name="barbell-outline"
+                            size={16}
+                            color="#6b7280"
+                          />
                           <Text className="text-sm text-slate-600 dark:text-slate-400 ml-1">
                             {formatVolume(workout.totalVolume)}
                           </Text>
@@ -204,6 +255,65 @@ export default function HistoryScreen() {
         {/* Bottom padding */}
         <View className="h-6" />
       </ScrollView>
+
+      {/* Workout action sheet */}
+      <Modal
+        visible={!!actionSheetWorkout}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActionSheetWorkout(null)}
+      >
+        <View
+          className="flex-1 justify-end"
+          style={{ backgroundColor: "rgba(0,0,0,0.45)" }}
+        >
+          <Pressable
+            style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}
+            onPress={() => setActionSheetWorkout(null)}
+          />
+          <View className="bg-white dark:bg-slate-800 rounded-t-3xl pt-3 pb-10">
+            {/* Handle */}
+            <View className="w-10 h-1 bg-slate-300 dark:bg-slate-600 rounded-full self-center mb-3" />
+            {/* Workout name title */}
+            <Text className="text-center font-semibold text-slate-900 dark:text-white px-6 mb-1">
+              {actionSheetWorkout?.name ?? "Workout"}
+            </Text>
+            <Text className="text-center text-xs text-slate-400 dark:text-slate-500 mb-4">
+              Choose an action
+            </Text>
+
+            {/* Copy Workout option */}
+            <Pressable
+              onPress={() => {
+                setCopyModalWorkout(actionSheetWorkout);
+                setActionSheetWorkout(null);
+              }}
+              className="flex-row items-center px-6 py-4 active:bg-slate-100 dark:active:bg-slate-700"
+            >
+              <View className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 items-center justify-center mr-4">
+                <Ionicons name="copy-outline" size={20} color="#10b981" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-base font-medium text-slate-900 dark:text-white">
+                  Copy Workout
+                </Text>
+                <Text className="text-sm text-slate-500 dark:text-slate-400">
+                  Start a new session based on this workout
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Copy workout modal */}
+      <CopyWorkoutModal
+        visible={!!copyModalWorkout}
+        workoutId={copyModalWorkout?.id ?? null}
+        workoutName={copyModalWorkout?.name ?? null}
+        onClose={() => setCopyModalWorkout(null)}
+      />
     </SafeAreaView>
   );
 }
