@@ -14,7 +14,7 @@ import {
   suggestWorkout,
   suggestSplit,
   matchExercisesToDb,
-  getApiKey,
+  QuotaExceededError,
   type SuggestWorkoutParams,
   type SuggestSplitParams,
   type SuggestedWorkout,
@@ -22,6 +22,7 @@ import {
   type SuggestedSet,
   type WorkoutSummary,
 } from "@/lib/ai/claude";
+import { useAIStore } from "@/stores/ai-store";
 import {
   getRecentWorkouts,
   getWorkoutWithDetails,
@@ -133,6 +134,7 @@ export default function SuggestWorkoutScreen() {
   const { startWorkoutWithExercises } = useWorkoutStore();
   const { activeSplit, setActiveSplit, advanceDay, clearActiveSplit } =
     useSplitStore();
+  const { updateQuota } = useAIStore();
 
   const [step, setStep] = useState<Step>("mode_select");
   const [selectedSplit, setSelectedSplit] = useState<string | null>(null);
@@ -228,16 +230,6 @@ export default function SuggestWorkoutScreen() {
   const handleGenerate = async () => {
     if (!selectedSplit || !selectedDuration) return;
 
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      Alert.alert(
-        "API Key Required",
-        "Set your Claude API key in Profile > Settings to use workout suggestions.",
-        [{ text: "OK", onPress: () => router.back() }]
-      );
-      return;
-    }
-
     setStep("loading");
 
     try {
@@ -251,9 +243,11 @@ export default function SuggestWorkoutScreen() {
         equipment: selectedEquipment ?? undefined,
       };
 
-      const result = await suggestWorkout(params);
+      const { data: workout, quota } = await suggestWorkout(params);
+      updateQuota(quota);
+
       const { matched, unmatched } = matchExercisesToDb(
-        result.exercises,
+        workout.exercises,
         availableExercises
       );
 
@@ -267,16 +261,22 @@ export default function SuggestWorkoutScreen() {
       }
 
       const matchedWithReasons: MatchedExercise[] = matched.map((m) => {
-        const sugEx = result.exercises.find(
+        const sugEx = workout.exercises.find(
           (e) => e.exerciseName.toLowerCase() === m.exercise.name.toLowerCase()
         );
         return { exercise: m.exercise, reason: sugEx?.reason || "", sets: m.sets };
       });
 
-      setSuggestion(result);
+      setSuggestion(workout);
       setMatchedExercises(matchedWithReasons);
       setStep("summary");
     } catch (error) {
+      if (error instanceof QuotaExceededError) {
+        updateQuota(error.quota);
+        router.push("/paywall");
+        setStep("feeling"); // reset to a valid step
+        return;
+      }
       setErrorMessage(
         error instanceof Error ? error.message : "Something went wrong."
       );
@@ -376,16 +376,6 @@ export default function SuggestWorkoutScreen() {
   const handleGenerateSplit = async () => {
     if (!selectedDaysPerWeek) return;
 
-    const apiKey = await getApiKey();
-    if (!apiKey) {
-      Alert.alert(
-        "API Key Required",
-        "Set your Claude API key in Profile > Settings to use workout suggestions.",
-        [{ text: "OK", onPress: () => router.back() }]
-      );
-      return;
-    }
-
     setStep("loading");
 
     try {
@@ -398,12 +388,20 @@ export default function SuggestWorkoutScreen() {
         equipment: selectedEquipment ?? undefined,
       };
 
-      const plan = await suggestSplit(params);
-      setSuggestedSplitPlan(plan);
-      const built = buildActiveSplitFromAI(plan, availableExercises);
+      const { data: splitPlan, quota } = await suggestSplit(params);
+      updateQuota(quota);
+
+      setSuggestedSplitPlan(splitPlan);
+      const built = buildActiveSplitFromAI(splitPlan, availableExercises);
       setPendingSplit(built);
       setStep("split_summary");
     } catch (error) {
+      if (error instanceof QuotaExceededError) {
+        updateQuota(error.quota);
+        router.push("/paywall");
+        setStep("split_config"); // reset to a valid step
+        return;
+      }
       setErrorMessage(
         error instanceof Error ? error.message : "Something went wrong."
       );

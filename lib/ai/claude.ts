@@ -1,22 +1,7 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "@/lib/supabase";
+import { getDeviceId } from "@/lib/ai/device";
 import type { Exercise, MuscleGroup } from "@/types";
-
-const API_KEY_STORAGE_KEY = "claude_api_key";
-const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-const CLAUDE_MODEL = "claude-sonnet-4-5-20250929";
-
-// API key management
-export async function getApiKey(): Promise<string | null> {
-  return AsyncStorage.getItem(API_KEY_STORAGE_KEY);
-}
-
-export async function setApiKey(key: string): Promise<void> {
-  await AsyncStorage.setItem(API_KEY_STORAGE_KEY, key);
-}
-
-export async function clearApiKey(): Promise<void> {
-  await AsyncStorage.removeItem(API_KEY_STORAGE_KEY);
-}
+import type { QuotaInfo } from "@/stores/ai-store";
 
 // Types
 export interface WorkoutSummary {
@@ -75,6 +60,23 @@ export interface SuggestedSplitPlan {
   days: SuggestedSplitDay[];
 }
 
+export interface AIResult<T> {
+  data: T;
+  quota: QuotaInfo;
+}
+
+// Thrown when the user has hit their monthly quota
+export class QuotaExceededError extends Error {
+  quota: QuotaInfo;
+  constructor(quota: QuotaInfo) {
+    super("Monthly AI suggestion limit reached");
+    this.name = "QuotaExceededError";
+    this.quota = quota;
+  }
+}
+
+// ---------- Prompt builders (client-side, no secrets) ----------
+
 function groupExercisesByMuscle(
   exercises: Exercise[]
 ): Record<string, string[]> {
@@ -91,7 +93,6 @@ function buildRecentWorkoutsSummary(workouts: WorkoutSummary[]): string {
   if (workouts.length === 0) {
     return "No recent workout history available. This is a beginner or returning user.";
   }
-
   return workouts
     .map((w, i) => {
       const exerciseList = w.exercises
@@ -104,9 +105,7 @@ function buildRecentWorkoutsSummary(workouts: WorkoutSummary[]): string {
 
 function findRecentlyTrainedMuscles(workouts: WorkoutSummary[]): string[] {
   const muscleCounts: Record<string, number> = {};
-  // Look at last 3 workouts for "recently trained"
-  const recent = workouts.slice(0, 3);
-  for (const w of recent) {
+  for (const w of workouts.slice(0, 3)) {
     for (const e of w.exercises) {
       muscleCounts[e.primaryMuscle] = (muscleCounts[e.primaryMuscle] || 0) + 1;
     }
@@ -114,17 +113,13 @@ function findRecentlyTrainedMuscles(workouts: WorkoutSummary[]): string[] {
   return Object.keys(muscleCounts);
 }
 
-function buildPrompt(params: SuggestWorkoutParams): string {
+function buildWorkoutPrompt(params: SuggestWorkoutParams): string {
   const { recentWorkouts, split, duration, availableExercises, energyLevel, equipment } = params;
-
   const grouped = groupExercisesByMuscle(availableExercises);
   const recentSummary = buildRecentWorkoutsSummary(recentWorkouts);
   const recentMuscles = findRecentlyTrainedMuscles(recentWorkouts);
   const allMuscles = Object.keys(grouped);
-  const undertrainedMuscles = allMuscles.filter(
-    (m) => !recentMuscles.includes(m)
-  );
-
+  const undertrainedMuscles = allMuscles.filter((m) => !recentMuscles.includes(m));
   const exerciseListStr = Object.entries(grouped)
     .map(([muscle, names]) => `## ${muscle}\n${names.join(", ")}`)
     .join("\n\n");
@@ -161,11 +156,11 @@ ${exerciseListStr}
 Respond with ONLY valid JSON matching this schema:
 {
   "name": "string - short workout name like 'Upper Body Power' or 'Push Day'",
-  "reasoning": "string - 2-3 sentences explaining WHY this workout was chosen. Reference the user's recent training history, which muscle groups need attention, and how the split/time influenced exercise selection.",
+  "reasoning": "string - 2-3 sentences explaining WHY this workout was chosen.",
   "exercises": [
     {
       "exerciseName": "string - exact name from available exercises list",
-      "reason": "string - brief reason for this exercise and the chosen sets/reps/weight (e.g. 'Compound chest builder — 3x10 at moderate weight for hypertrophy')",
+      "reason": "string - brief reason for this exercise",
       "sets": [
         { "reps": number, "weight": number, "isWarmup": boolean }
       ]
@@ -174,96 +169,10 @@ Respond with ONLY valid JSON matching this schema:
 }`;
 }
 
-export async function suggestWorkout(
-  params: SuggestWorkoutParams
-): Promise<SuggestedWorkout> {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
-    throw new Error(
-      "Claude API key not configured. Go to Profile > Settings to add your API key."
-    );
-  }
-
-  const userPrompt = buildPrompt(params);
-
-  const response = await fetch(CLAUDE_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 2048,
-      system:
-        "You are an expert fitness coach and personal trainer. Return ONLY valid JSON with no additional text, markdown, or explanation.",
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    if (response.status === 401) {
-      throw new Error(
-        "Invalid API key. Check your Claude API key in Profile > Settings."
-      );
-    }
-    if (response.status === 429) {
-      throw new Error("Rate limit exceeded. Please try again in a moment.");
-    }
-    throw new Error(`API request failed (${response.status}): ${errorBody}`);
-  }
-
-  const data = await response.json();
-
-  const content = data.content?.[0]?.text;
-  if (!content) {
-    throw new Error("Empty response from Claude API.");
-  }
-
-  // Extract JSON from response (handle potential markdown code blocks)
-  let jsonStr = content.trim();
-  if (jsonStr.startsWith("```")) {
-    jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-  }
-
-  let parsed: SuggestedWorkout;
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    throw new Error("Failed to parse workout suggestion. Please try again.");
-  }
-
-  // Validate structure
-  if (
-    !parsed.name ||
-    !Array.isArray(parsed.exercises) ||
-    parsed.exercises.length === 0
-  ) {
-    throw new Error("Invalid workout format received. Please try again.");
-  }
-
-  // Default reasoning if not provided
-  if (!parsed.reasoning) {
-    parsed.reasoning = "Workout generated based on your preferences.";
-  }
-
-  for (const ex of parsed.exercises) {
-    if (!ex.exerciseName || !Array.isArray(ex.sets) || ex.sets.length === 0) {
-      throw new Error("Invalid exercise format received. Please try again.");
-    }
-  }
-
-  return parsed;
-}
-
 function buildSplitPrompt(params: SuggestSplitParams): string {
   const { daysPerWeek, recentWorkouts, availableExercises, energyLevel, equipment } = params;
-
   const grouped = groupExercisesByMuscle(availableExercises);
   const recentSummary = buildRecentWorkoutsSummary(recentWorkouts);
-
   const exerciseListStr = Object.entries(grouped)
     .map(([muscle, names]) => `## ${muscle}\n${names.join(", ")}`)
     .join("\n\n");
@@ -296,7 +205,7 @@ ${exerciseListStr}
 Respond with ONLY valid JSON matching this schema:
 {
   "name": "string - short split name like 'PPL Split' or '4-Day Upper Lower'",
-  "reasoning": "string - 2-3 sentences explaining the split structure and why it suits this user",
+  "reasoning": "string - 2-3 sentences explaining the split structure",
   "days": [
     {
       "dayName": "string - e.g. 'Push Day', 'Upper A', 'Legs'",
@@ -315,53 +224,73 @@ Respond with ONLY valid JSON matching this schema:
 }`;
 }
 
-export async function suggestSplit(
-  params: SuggestSplitParams
-): Promise<SuggestedSplitPlan> {
-  const apiKey = await getApiKey();
-  if (!apiKey) {
-    throw new Error(
-      "Claude API key not configured. Go to Profile > Settings to add your API key."
-    );
-  }
+// ---------- Edge function call ----------
 
-  const userPrompt = buildSplitPrompt(params);
+async function callAISuggest(
+  prompt: string,
+  maxTokens: number
+): Promise<{ content: string; quota: QuotaInfo }> {
+  const deviceId = await getDeviceId();
 
-  const response = await fetch(CLAUDE_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: CLAUDE_MODEL,
-      max_tokens: 6000,
-      system:
-        "You are an expert fitness coach and personal trainer. Return ONLY valid JSON with no additional text, markdown, or explanation.",
-      messages: [{ role: "user", content: userPrompt }],
-    }),
+  const { data, error } = await supabase.functions.invoke("ai-suggest", {
+    body: { deviceId, prompt, maxTokens },
   });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    if (response.status === 401) {
-      throw new Error(
-        "Invalid API key. Check your Claude API key in Profile > Settings."
-      );
-    }
-    if (response.status === 429) {
-      throw new Error("Rate limit exceeded. Please try again in a moment.");
-    }
-    throw new Error(`API request failed (${response.status}): ${errorBody}`);
+  if (error) {
+    throw new Error(error.message || "AI service unavailable. Please try again.");
   }
 
-  const data = await response.json();
-
-  const content = data.content?.[0]?.text;
-  if (!content) {
-    throw new Error("Empty response from Claude API.");
+  if (data?.error === "quota_exceeded") {
+    throw new QuotaExceededError(data.quota as QuotaInfo);
   }
+
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+
+  return { content: data.content as string, quota: data.quota as QuotaInfo };
+}
+
+// ---------- Public API ----------
+
+export async function suggestWorkout(
+  params: SuggestWorkoutParams
+): Promise<AIResult<SuggestedWorkout>> {
+  const prompt = buildWorkoutPrompt(params);
+  const { content, quota } = await callAISuggest(prompt, 2048);
+
+  let jsonStr = content.trim();
+  if (jsonStr.startsWith("```")) {
+    jsonStr = jsonStr.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+  }
+
+  let parsed: SuggestedWorkout;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    throw new Error("Failed to parse workout suggestion. Please try again.");
+  }
+
+  if (!parsed.name || !Array.isArray(parsed.exercises) || parsed.exercises.length === 0) {
+    throw new Error("Invalid workout format received. Please try again.");
+  }
+  if (!parsed.reasoning) {
+    parsed.reasoning = "Workout generated based on your preferences.";
+  }
+  for (const ex of parsed.exercises) {
+    if (!ex.exerciseName || !Array.isArray(ex.sets) || ex.sets.length === 0) {
+      throw new Error("Invalid exercise format received. Please try again.");
+    }
+  }
+
+  return { data: parsed, quota };
+}
+
+export async function suggestSplit(
+  params: SuggestSplitParams
+): Promise<AIResult<SuggestedSplitPlan>> {
+  const prompt = buildSplitPrompt(params);
+  const { content, quota } = await callAISuggest(prompt, 6000);
 
   let jsonStr = content.trim();
   if (jsonStr.startsWith("```")) {
@@ -375,26 +304,16 @@ export async function suggestSplit(
     throw new Error("Failed to parse split suggestion. Please try again.");
   }
 
-  if (
-    !parsed.name ||
-    !Array.isArray(parsed.days) ||
-    parsed.days.length === 0
-  ) {
+  if (!parsed.name || !Array.isArray(parsed.days) || parsed.days.length === 0) {
     throw new Error("Invalid split format received. Please try again.");
   }
-
   for (const day of parsed.days) {
-    if (
-      !day.dayName ||
-      !day.splitType ||
-      !Array.isArray(day.exercises) ||
-      day.exercises.length === 0
-    ) {
+    if (!day.dayName || !day.splitType || !Array.isArray(day.exercises) || day.exercises.length === 0) {
       throw new Error("Invalid split day format received. Please try again.");
     }
   }
 
-  return parsed;
+  return { data: parsed, quota };
 }
 
 // Match suggested exercise names to DB exercises (case-insensitive)

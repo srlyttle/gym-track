@@ -1,46 +1,21 @@
-import { View, Text, ScrollView, Pressable, Switch, Modal, ActivityIndicator, Alert, TextInput } from "react-native";
+import { View, Text, ScrollView, Pressable, Switch, Modal, ActivityIndicator, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useRouter } from "expo-router";
 import { exportWorkouts, shareExportFile, type ExportRange } from "@/lib/export";
-import { getApiKey, setApiKey, clearApiKey } from "@/lib/ai/claude";
+import { useAIStore, FREE_MONTHLY_LIMIT } from "@/stores/ai-store";
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const [darkMode, setDarkMode] = useState(false);
   const [useKg, setUseKg] = useState(true);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [hasApiKey, setHasApiKey] = useState(false);
-  const [maskedKey, setMaskedKey] = useState("");
 
-  useEffect(() => {
-    loadApiKeyStatus();
-  }, []);
-
-  const loadApiKeyStatus = async () => {
-    const key = await getApiKey();
-    if (key) {
-      setHasApiKey(true);
-      setMaskedKey(`sk-...${key.slice(-4)}`);
-    } else {
-      setHasApiKey(false);
-      setMaskedKey("");
-    }
-  };
-
-  const handleSaveApiKey = async () => {
-    const trimmed = apiKeyInput.trim();
-    if (trimmed) {
-      await setApiKey(trimmed);
-    } else {
-      await clearApiKey();
-    }
-    setApiKeyInput("");
-    setShowApiKeyModal(false);
-    await loadApiKeyStatus();
-  };
+  const { plan, usageThisMonth, monthlyLimit } = useAIStore();
+  const isPro = plan === "pro";
+  const usagePercent = Math.min(100, (usageThisMonth / monthlyLimit) * 100);
 
   const exportRanges: { label: string; value: ExportRange }[] = [
     { label: "Last 1 week", value: "1week" },
@@ -71,7 +46,7 @@ export default function ProfileScreen() {
           },
         ]
       );
-    } catch (error) {
+    } catch {
       Alert.alert("Export Failed", "Something went wrong while exporting your data.");
     } finally {
       setExporting(false);
@@ -109,6 +84,53 @@ export default function ProfileScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* AI Subscription Section */}
+        <Text className="text-lg font-semibold text-slate-900 dark:text-white mb-3">
+          AI Features
+        </Text>
+        <Pressable
+          onPress={() => router.push("/paywall")}
+          className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mb-6"
+        >
+          <View className="flex-row items-center justify-between mb-3">
+            <View className="flex-row items-center">
+              <View className="w-9 h-9 bg-emerald-500 rounded-lg items-center justify-center">
+                <Ionicons name="sparkles" size={18} color="white" />
+              </View>
+              <View className="ml-3">
+                <Text className="font-semibold text-slate-900 dark:text-white">
+                  {isPro ? "Pro Plan" : "Free Plan"}
+                </Text>
+                <Text className="text-xs text-slate-500 dark:text-slate-400">
+                  {isPro ? "Unlimited AI suggestions" : `${usageThisMonth} / ${monthlyLimit} used this month`}
+                </Text>
+              </View>
+            </View>
+            <View className="flex-row items-center gap-2">
+              {isPro ? (
+                <View className="bg-emerald-100 dark:bg-emerald-900/40 rounded-full px-2 py-0.5">
+                  <Text className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">Pro</Text>
+                </View>
+              ) : (
+                <View className="bg-slate-200 dark:bg-slate-700 rounded-full px-2 py-0.5">
+                  <Text className="text-xs font-semibold text-slate-600 dark:text-slate-300">Upgrade</Text>
+                </View>
+              )}
+              <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+            </View>
+          </View>
+
+          {/* Usage bar (free plan only) */}
+          {!isPro && (
+            <View className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+              <View
+                className="h-full bg-emerald-500 rounded-full"
+                style={{ width: `${usagePercent}%` }}
+              />
+            </View>
+          )}
+        </Pressable>
 
         {/* Settings Section */}
         <Text className="text-lg font-semibold text-slate-900 dark:text-white mb-3">
@@ -152,7 +174,7 @@ export default function ProfileScreen() {
           </View>
 
           {/* Notifications */}
-          <Pressable className="flex-row items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700">
+          <Pressable className="flex-row items-center justify-between p-4">
             <View className="flex-row items-center">
               <Ionicons name="notifications" size={24} color="#10b981" />
               <Text className="ml-3 text-slate-900 dark:text-white">
@@ -160,25 +182,6 @@ export default function ProfileScreen() {
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-          </Pressable>
-
-          {/* Claude API Key */}
-          <Pressable
-            onPress={() => setShowApiKeyModal(true)}
-            className="flex-row items-center justify-between p-4"
-          >
-            <View className="flex-row items-center">
-              <Ionicons name="key" size={24} color="#10b981" />
-              <Text className="ml-3 text-slate-900 dark:text-white">
-                Claude API Key
-              </Text>
-            </View>
-            <View className="flex-row items-center">
-              <Text className="text-slate-500 dark:text-slate-400 mr-2">
-                {hasApiKey ? maskedKey : "Not configured"}
-              </Text>
-              <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-            </View>
           </Pressable>
         </View>
 
@@ -219,7 +222,7 @@ export default function ProfileScreen() {
         {/* App Info */}
         <View className="items-center py-6">
           <Text className="text-slate-400 dark:text-slate-500">
-            GymTrack v1.0.0
+            Muscleminded v4.0.3
           </Text>
         </View>
       </ScrollView>
@@ -243,7 +246,7 @@ export default function ProfileScreen() {
             </View>
 
             <Text className="text-slate-500 dark:text-slate-400 mb-4">
-              Export your workout history as JSON for analysis. Choose a time range:
+              Export your workout history as JSON. Choose a time range:
             </Text>
 
             {exporting ? (
@@ -269,54 +272,6 @@ export default function ProfileScreen() {
                 ))}
               </View>
             )}
-
-            <View className="h-8" />
-          </View>
-        </View>
-      </Modal>
-      {/* API Key Modal */}
-      <Modal
-        visible={showApiKeyModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowApiKeyModal(false)}
-      >
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white dark:bg-slate-800 rounded-t-2xl p-6">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-xl font-bold text-slate-900 dark:text-white">
-                Claude API Key
-              </Text>
-              <Pressable onPress={() => setShowApiKeyModal(false)}>
-                <Ionicons name="close" size={24} color="#9ca3af" />
-              </Pressable>
-            </View>
-
-            <Text className="text-slate-500 dark:text-slate-400 mb-4">
-              Enter your Anthropic API key to enable AI workout suggestions. Your key is stored locally on this device.
-            </Text>
-
-            <TextInput
-              value={apiKeyInput}
-              onChangeText={setApiKeyInput}
-              placeholder={hasApiKey ? "Enter new key to replace" : "sk-ant-..."}
-              placeholderTextColor="#9ca3af"
-              autoCapitalize="none"
-              autoCorrect={false}
-              secureTextEntry
-              className="bg-slate-100 dark:bg-slate-700 rounded-xl px-4 py-3 text-slate-900 dark:text-white mb-4"
-            />
-
-            <View className="gap-3">
-              <Pressable
-                onPress={handleSaveApiKey}
-                className="bg-primary-500 rounded-xl py-3 active:bg-primary-600"
-              >
-                <Text className="text-white font-semibold text-center">
-                  {apiKeyInput.trim() ? "Save Key" : hasApiKey ? "Remove Key" : "Cancel"}
-                </Text>
-              </Pressable>
-            </View>
 
             <View className="h-8" />
           </View>
