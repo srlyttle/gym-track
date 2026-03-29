@@ -1,6 +1,40 @@
 import { getDatabase, generateId } from "./database";
 import type { Workout, WorkoutExercise, WorkoutSet, PersonalRecord, WorkoutExerciseWithDetails, WorkoutWithDetails, Exercise } from "@/types";
 
+// Chart / analytics types
+export interface WeeklyVolumePoint {
+  week_start: string;
+  total_volume: number;
+  workout_count: number;
+}
+
+export interface MuscleGroupVolumePoint {
+  muscle: string;
+  total_volume: number;
+  set_count: number;
+}
+
+export interface ExerciseStrengthPoint {
+  session_date: string;
+  best_weight: number;
+  reps_at_best: number;
+  estimated_1rm: number;
+}
+
+export interface ConsistencyStats {
+  total_workouts: number;
+  weeks_with_workout: number;
+  avg_workouts_per_week: number;
+  current_streak_weeks: number;
+}
+
+export interface ExerciseUsageSummary {
+  id: string;
+  name: string;
+  primary_muscle: string;
+  session_count: number;
+}
+
 // Workout operations
 export async function createWorkout(name?: string): Promise<Workout> {
   const db = await getDatabase();
@@ -496,6 +530,176 @@ export async function getWorkoutsInDateRange(
     }
   }
 
+  return results;
+}
+
+// Analytics functions
+
+export async function getWeeklyVolumeInRange(
+  startDate: string,
+  endDate: string
+): Promise<WeeklyVolumePoint[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<WeeklyVolumePoint>(
+    `SELECT
+       date(w.started_at, 'weekday 0', '-6 days') as week_start,
+       SUM(ws.reps * ws.weight) as total_volume,
+       COUNT(DISTINCT w.id) as workout_count
+     FROM workout_sets ws
+     JOIN workout_exercises we ON ws.workout_exercise_id = we.id
+     JOIN workouts w ON we.workout_id = w.id
+     WHERE w.completed_at IS NOT NULL
+       AND w.started_at >= ?
+       AND w.started_at <= ?
+       AND ws.is_completed = 1
+       AND ws.is_warmup = 0
+     GROUP BY week_start
+     ORDER BY week_start ASC`,
+    [startDate, endDate]
+  );
+  return results;
+}
+
+export async function getMuscleGroupVolumeInRange(
+  startDate: string,
+  endDate: string
+): Promise<MuscleGroupVolumePoint[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<MuscleGroupVolumePoint>(
+    `SELECT
+       e.primary_muscle as muscle,
+       SUM(ws.reps * ws.weight) as total_volume,
+       COUNT(ws.id) as set_count
+     FROM workout_sets ws
+     JOIN workout_exercises we ON ws.workout_exercise_id = we.id
+     JOIN exercises e ON we.exercise_id = e.id
+     JOIN workouts w ON we.workout_id = w.id
+     WHERE w.completed_at IS NOT NULL
+       AND w.started_at >= ?
+       AND w.started_at <= ?
+       AND ws.is_completed = 1
+       AND ws.is_warmup = 0
+     GROUP BY e.primary_muscle
+     ORDER BY total_volume DESC`,
+    [startDate, endDate]
+  );
+  return results;
+}
+
+export async function getExerciseBestSetPerSession(
+  exerciseId: string,
+  startDate: string,
+  endDate: string
+): Promise<ExerciseStrengthPoint[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<ExerciseStrengthPoint>(
+    `SELECT
+       date(w.started_at) as session_date,
+       MAX(ws.weight) as best_weight,
+       ws.reps as reps_at_best,
+       MAX(ws.weight) * (1.0 + ws.reps / 30.0) as estimated_1rm
+     FROM workout_sets ws
+     JOIN workout_exercises we ON ws.workout_exercise_id = we.id
+     JOIN workouts w ON we.workout_id = w.id
+     WHERE we.exercise_id = ?
+       AND w.completed_at IS NOT NULL
+       AND w.started_at >= ?
+       AND w.started_at <= ?
+       AND ws.is_completed = 1
+       AND ws.is_warmup = 0
+     GROUP BY session_date
+     ORDER BY session_date ASC`,
+    [exerciseId, startDate, endDate]
+  );
+  return results;
+}
+
+export async function getConsistencyStats(
+  startDate: string,
+  endDate: string
+): Promise<ConsistencyStats> {
+  const db = await getDatabase();
+
+  const rangeStats = await db.getFirstAsync<{ total_workouts: number; weeks_with_workout: number }>(
+    `SELECT
+       COUNT(*) as total_workouts,
+       COUNT(DISTINCT date(started_at, 'weekday 0', '-6 days')) as weeks_with_workout
+     FROM workouts
+     WHERE completed_at IS NOT NULL
+       AND started_at >= ?
+       AND started_at <= ?`,
+    [startDate, endDate]
+  );
+
+  // All-time week starts (most recent first) for streak calculation
+  const allWeekStarts = await db.getAllAsync<{ week_start: string }>(
+    `SELECT DISTINCT date(started_at, 'weekday 0', '-6 days') as week_start
+     FROM workouts
+     WHERE completed_at IS NOT NULL
+     ORDER BY week_start DESC`
+  );
+
+  // Calculate current streak
+  let streak = 0;
+  if (allWeekStarts.length > 0) {
+    const currentWeekStart = getStartOfWeek();
+    const currentWeekStr = currentWeekStart.toISOString().split("T")[0];
+    const prevWeekDate = new Date(currentWeekStart);
+    prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+    const prevWeekStr = prevWeekDate.toISOString().split("T")[0];
+
+    if (
+      allWeekStarts[0].week_start === currentWeekStr ||
+      allWeekStarts[0].week_start === prevWeekStr
+    ) {
+      streak = 1;
+      const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+      for (let i = 1; i < allWeekStarts.length; i++) {
+        const prev = new Date(allWeekStarts[i - 1].week_start).getTime();
+        const curr = new Date(allWeekStarts[i].week_start).getTime();
+        if (prev - curr === msPerWeek) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+    }
+  }
+
+  const totalWorkouts = rangeStats?.total_workouts || 0;
+  const weeksWithWorkout = rangeStats?.weeks_with_workout || 0;
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksInRange = Math.max(1, Math.round((new Date(endDate).getTime() - new Date(startDate).getTime()) / msPerWeek));
+
+  return {
+    total_workouts: totalWorkouts,
+    weeks_with_workout: weeksWithWorkout,
+    avg_workouts_per_week: Math.round((totalWorkouts / weeksInRange) * 10) / 10,
+    current_streak_weeks: streak,
+  };
+}
+
+export async function getExercisesUsedInRange(
+  startDate: string,
+  endDate: string
+): Promise<ExerciseUsageSummary[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<ExerciseUsageSummary>(
+    `SELECT
+       e.id,
+       e.name,
+       e.primary_muscle,
+       COUNT(DISTINCT w.id) as session_count
+     FROM workout_exercises we
+     JOIN exercises e ON we.exercise_id = e.id
+     JOIN workouts w ON we.workout_id = w.id
+     WHERE w.completed_at IS NOT NULL
+       AND w.started_at >= ?
+       AND w.started_at <= ?
+     GROUP BY e.id
+     ORDER BY session_count DESC`,
+    [startDate, endDate]
+  );
   return results;
 }
 
