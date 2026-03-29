@@ -1,5 +1,16 @@
 export * from "./colors";
 
+export const MUSCLE_COLORS: Record<string, string> = {
+  chest: "#ef4444",
+  back: "#3b82f6",
+  shoulders: "#f59e0b",
+  biceps: "#8b5cf6",
+  triceps: "#ec4899",
+  legs: "#10b981",
+  core: "#f97316",
+  forearms: "#6b7280",
+};
+
 export const REST_TIMER_PRESETS = [30, 60, 90, 120, 180] as const;
 
 export const WEIGHT_INCREMENTS = {
