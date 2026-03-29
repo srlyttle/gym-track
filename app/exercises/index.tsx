@@ -235,6 +235,8 @@ export default function ExerciseListScreen({ onSelect, selectionMode }: Props) {
             placeholderTextColor="#9ca3af"
             value={search}
             onChangeText={setSearch}
+            autoCorrect={false}
+            autoCapitalize="none"
           />
           {search && (
             <Pressable onPress={() => setSearch("")}>

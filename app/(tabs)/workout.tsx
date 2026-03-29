@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useWorkoutStore } from "@/stores/workout-store";
-import { seedExercisesIfNeeded, filterExercises, createCustomExercise } from "@/lib/db";
+import { seedExercisesIfNeeded, filterExercises, createCustomExercise, getExerciseHistory } from "@/lib/db";
 import type { Exercise, WorkoutExerciseWithDetails, WorkoutSet, MuscleGroup, Equipment, MovementPattern } from "@/types";
 
 const MUSCLE_GROUPS: { id: MuscleGroup; label: string }[] = [
@@ -194,32 +194,37 @@ export default function WorkoutScreen() {
         </Pressable>
       )}
 
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
-        {/* Exercises */}
-        {active.exercises.map((workoutExercise) => (
-          <ExerciseCard
-            key={workoutExercise.id}
-            workoutExercise={workoutExercise}
-            onAddSet={() => addSet(workoutExercise.id)}
-            onCompleteSet={(setId, reps, weight, isWarmup) =>
-              completeSet(setId, reps, weight, isWarmup)
-            }
-            onDeleteSet={(setId) => deleteSet(workoutExercise.id, setId)}
-            onRemoveExercise={() => removeExercise(workoutExercise.id)}
-          />
-        ))}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        className="flex-1"
+      >
+        <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }} keyboardShouldPersistTaps="handled">
+          {/* Exercises */}
+          {active.exercises.map((workoutExercise) => (
+            <ExerciseCard
+              key={workoutExercise.id}
+              workoutExercise={workoutExercise}
+              onAddSet={() => addSet(workoutExercise.id)}
+              onCompleteSet={(setId, reps, weight, isWarmup) =>
+                completeSet(setId, reps, weight, isWarmup)
+              }
+              onDeleteSet={(setId) => deleteSet(workoutExercise.id, setId)}
+              onRemoveExercise={() => removeExercise(workoutExercise.id)}
+            />
+          ))}
 
-        {/* Add Exercise Button */}
-        <Pressable
-          onPress={() => setShowExercisePicker(true)}
-          className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mt-2 active:bg-slate-200 dark:active:bg-slate-700"
-        >
-          <View className="flex-row items-center justify-center gap-2">
-            <Ionicons name="add" size={24} color="#10b981" />
-            <Text className="text-primary-500 font-semibold">Add Exercise</Text>
-          </View>
-        </Pressable>
-      </ScrollView>
+          {/* Add Exercise Button */}
+          <Pressable
+            onPress={() => setShowExercisePicker(true)}
+            className="bg-slate-100 dark:bg-slate-800 rounded-xl p-4 mt-2 active:bg-slate-200 dark:active:bg-slate-700"
+          >
+            <View className="flex-row items-center justify-center gap-2">
+              <Ionicons name="add" size={24} color="#10b981" />
+              <Text className="text-primary-500 font-semibold">Add Exercise</Text>
+            </View>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Exercise Picker Modal */}
       <ExercisePickerModal
@@ -245,10 +250,28 @@ function ExerciseCard({
   onDeleteSet: (setId: string) => void;
   onRemoveExercise: () => void;
 }) {
+  const [history, setHistory] = useState<{ date: string; sets: WorkoutSet[] }[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    getExerciseHistory(workoutExercise.exercise_id, 2).then(setHistory);
+  }, [workoutExercise.exercise_id]);
+
+  const formatHistoryDate = (iso: string) => {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  };
+
+  const formatSets = (sets: WorkoutSet[]) =>
+    sets
+      .filter((s) => !s.is_warmup)
+      .map((s) => `${s.weight ?? 0}×${s.reps ?? 0}`)
+      .join("  ");
+
   return (
     <View className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 mb-4">
       {/* Exercise Header */}
-      <View className="flex-row items-center justify-between mb-3">
+      <View className="flex-row items-center justify-between mb-2">
         <View className="flex-1">
           <Text className="text-lg font-semibold text-slate-900 dark:text-white">
             {workoutExercise.exercise.name}
@@ -264,9 +287,40 @@ function ExerciseCard({
         </Pressable>
       </View>
 
+      {/* Previous Performance */}
+      {history.length > 0 && (
+        <Pressable
+          onPress={() => setShowHistory((v) => !v)}
+          className="flex-row items-center mb-3"
+        >
+          <Text className="text-xs font-medium text-slate-400 dark:text-slate-500 mr-1">
+            PREVIOUS
+          </Text>
+          <Ionicons
+            name={showHistory ? "chevron-up" : "chevron-down"}
+            size={12}
+            color="#9ca3af"
+          />
+        </Pressable>
+      )}
+      {showHistory && history.length > 0 && (
+        <View className="mb-3 px-2 py-2 bg-slate-100 dark:bg-slate-700/50 rounded-lg">
+          {history.map((session, i) => (
+            <View key={i} className="flex-row items-baseline gap-2">
+              <Text className="text-xs text-slate-400 dark:text-slate-500 w-12">
+                {formatHistoryDate(session.date)}
+              </Text>
+              <Text className="text-xs text-slate-600 dark:text-slate-300 flex-1">
+                {formatSets(session.sets) || "—"}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Sets Header */}
       <View className="flex-row items-center px-2 mb-2">
-        <Text className="w-10 text-xs text-slate-500 dark:text-slate-400 text-center">
+        <Text className="w-8 text-xs text-slate-500 dark:text-slate-400 text-center">
           SET
         </Text>
         <Text className="flex-1 text-xs text-slate-500 dark:text-slate-400 text-center">
@@ -275,7 +329,7 @@ function ExerciseCard({
         <Text className="flex-1 text-xs text-slate-500 dark:text-slate-400 text-center">
           REPS
         </Text>
-        <View className="w-12" />
+        <View className="w-10" />
       </View>
 
       {/* Sets */}
@@ -312,8 +366,8 @@ function SetRow({
   onComplete: (reps: number, weight: number, isWarmup: boolean) => void;
   onDelete: () => void;
 }) {
-  const [weight, setWeight] = useState(set.weight?.toString() || "");
-  const [reps, setReps] = useState(set.reps?.toString() || "");
+  const [weight, setWeight] = useState(set.weight?.toString() ?? "");
+  const [reps, setReps] = useState(set.reps?.toString() ?? "");
   const [isWarmup, setIsWarmup] = useState(!!set.is_warmup);
   const isCompleted = !!set.is_completed;
 
@@ -324,6 +378,21 @@ function SetRow({
       onComplete(repsNum, weightNum, isWarmup);
     }
   };
+
+  const adjustWeight = (delta: number) => {
+    const current = parseFloat(weight) || 0;
+    const next = Math.max(0, Math.round((current + delta) * 10) / 10);
+    setWeight(next % 1 === 0 ? String(next) : next.toFixed(1));
+  };
+
+  const adjustReps = (delta: number) => {
+    const current = parseInt(reps) || 0;
+    const next = Math.max(0, current + delta);
+    setReps(String(next));
+  };
+
+  const stepperBtn = "w-7 h-8 items-center justify-center";
+  const stepperText = "text-slate-400 dark:text-slate-500 text-lg font-medium leading-none";
 
   return (
     <View
@@ -336,7 +405,7 @@ function SetRow({
       {/* Set Number */}
       <Pressable
         onPress={() => setIsWarmup(!isWarmup)}
-        className="w-10 items-center"
+        className="w-8 items-center"
       >
         <Text
           className={`text-sm font-medium ${
@@ -352,9 +421,18 @@ function SetRow({
       </Pressable>
 
       {/* Weight Input */}
-      <View className="flex-1 px-1">
+      <View className="flex-1 px-1 flex-row items-center">
+        {!isCompleted && (
+          <Pressable
+            onPress={() => adjustWeight(-2.5)}
+            className={stepperBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <Text className={stepperText}>−</Text>
+          </Pressable>
+        )}
         <TextInput
-          className={`text-center py-2 rounded-lg ${
+          className={`flex-1 text-center py-2 rounded-lg ${
             isCompleted
               ? "bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
               : "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white"
@@ -366,12 +444,30 @@ function SetRow({
           onChangeText={setWeight}
           editable={!isCompleted}
         />
+        {!isCompleted && (
+          <Pressable
+            onPress={() => adjustWeight(2.5)}
+            className={stepperBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <Text className={stepperText}>+</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Reps Input */}
-      <View className="flex-1 px-1">
+      <View className="flex-1 px-1 flex-row items-center">
+        {!isCompleted && (
+          <Pressable
+            onPress={() => adjustReps(-1)}
+            className={stepperBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <Text className={stepperText}>−</Text>
+          </Pressable>
+        )}
         <TextInput
-          className={`text-center py-2 rounded-lg ${
+          className={`flex-1 text-center py-2 rounded-lg ${
             isCompleted
               ? "bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300"
               : "bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white"
@@ -383,10 +479,19 @@ function SetRow({
           onChangeText={setReps}
           editable={!isCompleted}
         />
+        {!isCompleted && (
+          <Pressable
+            onPress={() => adjustReps(1)}
+            className={stepperBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          >
+            <Text className={stepperText}>+</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* Complete/Delete Button */}
-      <View className="w-12 items-center">
+      <View className="w-10 items-center">
         {isCompleted ? (
           <Ionicons name="checkmark-circle" size={24} color="#10b981" />
         ) : (
@@ -617,6 +722,8 @@ function ExercisePickerModal({
               value={search}
               onChangeText={setSearch}
               autoFocus
+              autoCorrect={false}
+              autoCapitalize="none"
             />
           </View>
         </View>
@@ -641,7 +748,7 @@ function ExercisePickerModal({
         </Pressable>
 
         {/* Exercise List */}
-        <ScrollView className="flex-1 px-4">
+        <ScrollView className="flex-1 px-4" keyboardShouldPersistTaps="handled">
           {exercises.map((exercise) => (
             <Pressable
               key={exercise.id}

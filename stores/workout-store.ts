@@ -182,7 +182,17 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     try {
       const exercise = active.exercises.find((e) => e.id === workoutExerciseId);
       const nextSetNumber = (exercise?.sets.length || 0) + 1;
-      await db.addSet(workoutExerciseId, nextSetNumber);
+      const newSet = await db.addSet(workoutExerciseId, nextSetNumber);
+
+      // Pre-fill with last set's values
+      const lastSet = exercise?.sets[exercise.sets.length - 1];
+      if (lastSet && (lastSet.weight !== null || lastSet.reps !== null)) {
+        await db.updateSet(newSet.id, {
+          weight: lastSet.weight ?? undefined,
+          reps: lastSet.reps ?? undefined,
+        });
+      }
+
       await refreshExercises();
     } catch (error) {
       console.error("Failed to add set:", error);
