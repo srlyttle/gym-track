@@ -24,7 +24,7 @@
     "expo-router": "~6.0.23",
     "expo-secure-store": "^15.0.8",
     "expo-sharing": "^14.0.8",
-    "expo-sqlite": "^16.0.10",
+    "expo-sqlite": "^16.1.0-canary-20260121-a63c0dd",
     "expo-status-bar": "~3.0.9",
     "nativewind": "^4.2.1",
     "react": "19.1.0",

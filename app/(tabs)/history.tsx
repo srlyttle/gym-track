@@ -19,6 +19,8 @@ import {
 } from "@/lib/db";
 import type { Workout } from "@/types";
 import CopyWorkoutModal from "@/components/CopyWorkoutModal";
+import { shareWorkout } from "@/lib/share";
+import { useSettingsStore } from "@/stores/settings-store";
 
 interface WorkoutWithStats extends Workout {
   exerciseCount: number;
@@ -32,6 +34,7 @@ interface SelectedWorkout {
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const { unitPreference } = useSettingsStore();
   const [workouts, setWorkouts] = useState<WorkoutWithStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -302,6 +305,28 @@ export default function HistoryScreen() {
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+            </Pressable>
+
+            {/* Share option */}
+            <Pressable
+              onPress={() => {
+                const id = actionSheetWorkout?.id;
+                setActionSheetWorkout(null);
+                if (id) shareWorkout(id, unitPreference);
+              }}
+              className="flex-row items-center px-6 py-4 active:bg-slate-100 dark:active:bg-slate-700"
+            >
+              <View className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/40 items-center justify-center mr-4">
+                <Ionicons name="share-outline" size={20} color="#3b82f6" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-base font-medium text-slate-900 dark:text-white">
+                  Share Workout
+                </Text>
+                <Text className="text-sm text-slate-500 dark:text-slate-400">
+                  Share a summary via messages, notes, etc.
+                </Text>
+              </View>
             </Pressable>
           </View>
         </View>

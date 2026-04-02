@@ -104,6 +104,7 @@ export interface UserSettings {
   unitPreference: WeightUnit;
   themePreference: ThemePreference;
   restTimerDefault: number; // in seconds
+  displayName: string;
 }
 
 // Auth Types

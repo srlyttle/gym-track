@@ -1,5 +1,7 @@
 import { create } from "zustand";
 import * as db from "@/lib/db";
+import { syncWorkoutToCloud } from "@/lib/sync";
+import { useAuthStore } from "@/stores/auth-store";
 import type {
   Workout,
   WorkoutExercise,
@@ -125,7 +127,14 @@ export const useWorkoutStore = create<WorkoutState>((set, get) => ({
     set({ isLoading: true });
     try {
       await db.completeWorkout(active.workout.id, notes);
+      const workoutId = active.workout.id;
       set({ active: null, isLoading: false, restTimerEndTime: null });
+
+      // Fire-and-forget auto-sync
+      const userId = useAuthStore.getState().user?.id;
+      if (userId) {
+        syncWorkoutToCloud(workoutId, userId).catch(() => {});
+      }
     } catch (error) {
       console.error("Failed to complete workout:", error);
       set({ isLoading: false });
