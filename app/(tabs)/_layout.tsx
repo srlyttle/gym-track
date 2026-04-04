@@ -9,17 +9,13 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarActiveTintColor: "#10b981",
         tabBarInactiveTintColor: isDark ? "#9ca3af" : "#6b7280",
         tabBarStyle: {
           backgroundColor: isDark ? "#1e293b" : "#ffffff",
           borderTopColor: isDark ? "#334155" : "#e5e7eb",
         },
-        headerStyle: {
-          backgroundColor: isDark ? "#1e293b" : "#ffffff",
-        },
-        headerTintColor: isDark ? "#f9fafb" : "#111827",
-        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
@@ -35,7 +31,6 @@ export default function TabLayout() {
         name="workout"
         options={{
           title: "Workout",
-          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="barbell" size={size} color={color} />
           ),

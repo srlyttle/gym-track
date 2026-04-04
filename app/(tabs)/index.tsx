@@ -40,7 +40,9 @@ export default function HomeScreen() {
   const [workoutsThisWeek, setWorkoutsThisWeek] = useState(0);
   const [totalVolume, setTotalVolume] = useState(0);
   const [recentWorkouts, setRecentWorkouts] = useState<Workout[]>([]);
-  const [muscleGroups, setMuscleGroups] = useState<{ muscle: string; count: number }[]>([]);
+  const [muscleGroups, setMuscleGroups] = useState<
+    { muscle: string; count: number }[]
+  >([]);
   const [refreshing, setRefreshing] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
@@ -151,7 +153,9 @@ export default function HomeScreen() {
               <Text className="font-medium text-slate-900 dark:text-white text-sm">
                 {activeSplit.name}
                 <Text className="text-slate-500 dark:text-slate-400 font-normal">
-                  {" "}· Day {activeSplit.currentDayIndex + 1}/{activeSplit.days.length}
+                  {" "}
+                  · Day {activeSplit.currentDayIndex + 1}/
+                  {activeSplit.days.length}
                 </Text>
               </Text>
             </View>
@@ -167,17 +171,27 @@ export default function HomeScreen() {
         {/* Stats row */}
         <View className="flex-row gap-2 mb-3">
           <View className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2.5">
-            <Text className="text-slate-500 dark:text-slate-400 text-xs">This Week</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-xs">
+              This Week
+            </Text>
             <Text className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
               {workoutsThisWeek}
-              <Text className="text-sm font-normal text-slate-500 dark:text-slate-400"> workouts</Text>
+              <Text className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                {" "}
+                workouts
+              </Text>
             </Text>
           </View>
           <View className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2.5">
-            <Text className="text-slate-500 dark:text-slate-400 text-xs">Volume</Text>
+            <Text className="text-slate-500 dark:text-slate-400 text-xs">
+              Volume
+            </Text>
             <Text className="text-xl font-bold text-slate-900 dark:text-white leading-tight">
               {formatVolume(totalVolume)}
-              <Text className="text-sm font-normal text-slate-500 dark:text-slate-400"> kg</Text>
+              <Text className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                {" "}
+                kg
+              </Text>
             </Text>
           </View>
         </View>
@@ -198,7 +212,9 @@ export default function HomeScreen() {
                     {MUSCLE_LABELS[muscle] ?? muscle}
                   </Text>
                   {count > 1 && (
-                    <Text className="text-primary-500/70 text-xs">×{count}</Text>
+                    <Text className="text-primary-500/70 text-xs">
+                      ×{count}
+                    </Text>
                   )}
                 </View>
               ))}
@@ -240,8 +256,13 @@ export default function HomeScreen() {
             <Text className="text-base font-semibold text-slate-900 dark:text-white">
               Recent Workouts
             </Text>
-            <Pressable onPress={() => router.push("/(tabs)/history")} className="active:opacity-70">
-              <Text className="text-primary-500 text-xs font-medium">See all</Text>
+            <Pressable
+              onPress={() => router.push("/(tabs)/history")}
+              className="active:opacity-70"
+            >
+              <Text className="text-primary-500 text-xs font-medium">
+                See all
+              </Text>
             </Pressable>
           </View>
           {recentWorkouts.length === 0 ? (
@@ -259,7 +280,10 @@ export default function HomeScreen() {
                   className="bg-slate-100 dark:bg-slate-800 rounded-xl px-3 py-2.5 active:bg-slate-200 dark:active:bg-slate-700 flex-row items-center justify-between"
                 >
                   <View className="flex-1 mr-2">
-                    <Text className="font-medium text-slate-900 dark:text-white text-sm" numberOfLines={1}>
+                    <Text
+                      className="font-medium text-slate-900 dark:text-white text-sm"
+                      numberOfLines={1}
+                    >
                       {workout.name || "Workout"}
                     </Text>
                     <Text className="text-xs text-slate-500 dark:text-slate-400">
@@ -290,12 +314,7 @@ export default function HomeScreen() {
                 Exercises
               </Text>
             </Pressable>
-            <Pressable className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl py-3 items-center active:bg-slate-200 dark:active:bg-slate-700">
-              <Ionicons name="list" size={20} color="#10b981" />
-              <Text className="text-slate-700 dark:text-slate-300 mt-1 text-xs">
-                Routines
-              </Text>
-            </Pressable>
+
             <Pressable
               onPress={() => router.push("/(tabs)/progress")}
               className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-xl py-3 items-center active:bg-slate-200 dark:active:bg-slate-700"
