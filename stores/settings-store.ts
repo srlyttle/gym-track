@@ -7,6 +7,7 @@ interface SettingsState extends UserSettings {
   setUnitPreference: (unit: WeightUnit) => void;
   setThemePreference: (theme: ThemePreference) => void;
   setRestTimerDefault: (seconds: number) => void;
+  setDisplayName: (name: string) => void;
   reset: () => void;
 }
 
@@ -14,6 +15,7 @@ const defaultSettings: UserSettings = {
   unitPreference: "kg",
   themePreference: "system",
   restTimerDefault: 90,
+  displayName: "",
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -23,6 +25,7 @@ export const useSettingsStore = create<SettingsState>()(
       setUnitPreference: (unit) => set({ unitPreference: unit }),
       setThemePreference: (theme) => set({ themePreference: theme }),
       setRestTimerDefault: (seconds) => set({ restTimerDefault: seconds }),
+      setDisplayName: (name) => set({ displayName: name }),
       reset: () => set(defaultSettings),
     }),
     {

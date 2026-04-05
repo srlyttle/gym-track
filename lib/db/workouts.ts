@@ -1,5 +1,5 @@
 import { getDatabase, generateId } from "./database";
-import type { Workout, WorkoutExercise, WorkoutSet, PersonalRecord, WorkoutExerciseWithDetails, WorkoutWithDetails, Exercise } from "@/types";
+import type { Workout, WorkoutExercise, WorkoutSet, PersonalRecord, WorkoutExerciseWithDetails, WorkoutWithDetails, Exercise, BodyMeasurement } from "@/types";
 
 // Chart / analytics types
 export interface WeeklyVolumePoint {
@@ -701,6 +701,81 @@ export async function getExercisesUsedInRange(
     [startDate, endDate]
   );
   return results;
+}
+
+// Body measurement operations
+export async function addBodyMeasurement(weight: number, notes?: string): Promise<BodyMeasurement> {
+  const db = await getDatabase();
+  const id = generateId();
+  const measuredAt = new Date().toISOString();
+
+  await db.runAsync(
+    "INSERT INTO body_measurements (id, weight, notes, measured_at) VALUES (?, ?, ?, ?)",
+    [id, weight, notes || null, measuredAt]
+  );
+
+  return { id, weight, notes: notes || null, measured_at: measuredAt, created_at: measuredAt };
+}
+
+export async function getBodyMeasurements(limit: number = 20): Promise<BodyMeasurement[]> {
+  const db = await getDatabase();
+  const results = await db.getAllAsync<BodyMeasurement>(
+    "SELECT * FROM body_measurements ORDER BY measured_at DESC LIMIT ?",
+    [limit]
+  );
+  return results;
+}
+
+export async function getLatestBodyMeasurement(): Promise<BodyMeasurement | null> {
+  const db = await getDatabase();
+  const result = await db.getFirstAsync<BodyMeasurement>(
+    "SELECT * FROM body_measurements ORDER BY measured_at DESC LIMIT 1"
+  );
+  return result || null;
+}
+
+export interface LifetimeStats {
+  total_workouts: number;
+  total_volume: number;
+  total_prs: number;
+  top_muscle: string | null;
+}
+
+export async function getLifetimeStats(): Promise<LifetimeStats> {
+  const db = await getDatabase();
+
+  const totals = await db.getFirstAsync<{ total_workouts: number; total_volume: number | null }>(
+    `SELECT
+       COUNT(DISTINCT w.id) as total_workouts,
+       SUM(ws.reps * ws.weight) as total_volume
+     FROM workouts w
+     LEFT JOIN workout_exercises we ON we.workout_id = w.id
+     LEFT JOIN workout_sets ws ON ws.workout_exercise_id = we.id AND ws.is_completed = 1 AND ws.is_warmup = 0
+     WHERE w.completed_at IS NOT NULL`
+  );
+
+  const prCount = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM personal_records"
+  );
+
+  const topMuscle = await db.getFirstAsync<{ muscle: string }>(
+    `SELECT e.primary_muscle as muscle, COUNT(ws.id) as set_count
+     FROM workout_sets ws
+     JOIN workout_exercises we ON ws.workout_exercise_id = we.id
+     JOIN exercises e ON we.exercise_id = e.id
+     JOIN workouts w ON we.workout_id = w.id
+     WHERE w.completed_at IS NOT NULL AND ws.is_completed = 1 AND ws.is_warmup = 0
+     GROUP BY e.primary_muscle
+     ORDER BY set_count DESC
+     LIMIT 1`
+  );
+
+  return {
+    total_workouts: totals?.total_workouts || 0,
+    total_volume: totals?.total_volume || 0,
+    total_prs: prCount?.count || 0,
+    top_muscle: topMuscle?.muscle || null,
+  };
 }
 
 // Helper functions
